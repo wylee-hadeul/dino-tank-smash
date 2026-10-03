@@ -1,5 +1,8 @@
 extends Node2D
-## 공격 헬기 (웨이브 3부터). 공룡 위에서 폭탄을 떨어뜨린다. 점프해서 물어야 한다.
+## 공격 헬기. 공룡 위에서 폭탄을 떨어뜨린다. 점프해서 물어야 한다.
+
+const Stages = preload("res://scripts/stages.gd")
+const ShellScript = preload("res://scripts/shell.gd")
 
 var main
 var hp := 60.0
@@ -15,7 +18,14 @@ var t := 0.0
 var points := 200
 
 
+var gold := 8
+var bomb_dmg := 10.0
+
+
 func _ready() -> void:
+	hp *= Stages.hp_mult(main.stage)
+	max_hp = hp
+	bomb_dmg *= Stages.dmg_mult(main.stage)
 	hover_y = position.y
 	side = 1.0 if main.rng.randf() < 0.5 else -1.0
 	drop_cd = main.rng.randf_range(1.5, 2.5)
@@ -42,20 +52,21 @@ func update(delta: float) -> void:
 	if main.state == main.State.PLAYING and not d.dead and on_screen:
 		drop_cd -= delta
 		if drop_cd <= 0.0 and abs(d.position.x - position.x) < 260.0:
-			drop_cd = max(1.4, 2.8 - main.wave * 0.08)
-			main.add_shell(position + Vector2(0, 26), Vector2(vel_x * 0.6, 60.0), 10.0)
+			drop_cd = 2.6 * Stages.fire_mult(main.stage)
+			var b = main.add_shell(position + Vector2(0, 26), Vector2(vel_x * 0.6, 60.0), bomb_dmg)
+			b.style = ShellScript.BOMB
 			main.sfx.play("jump", -10.0, 0.6)
 	queue_redraw()
 
 
-func hit(dmg: float) -> void:
+func hit(dmg: float, _kdir := 0.0, src := "") -> void:
 	if dead:
 		return
 	hp -= dmg
 	flash = 0.12
 	if hp <= 0.0:
 		dead = true
-		main.on_enemy_destroyed(position, points, 1.0)
+		main.on_enemy_destroyed(position, points, 1.0, gold, src)
 		main.fx.debris(position, Color("566b7a"), 12)
 
 

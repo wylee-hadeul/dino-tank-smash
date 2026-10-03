@@ -3,7 +3,7 @@ extends Node2D
 
 enum { CIRCLE, DEBRIS, RING, TEXT }
 
-const MAX_PARTS := 700
+const MAX_PARTS := 420  # 모바일 성능을 위한 상한
 
 var main
 var parts: Array = []
@@ -33,11 +33,11 @@ func explosion(pos: Vector2, s: float) -> void:
 	_add({"k": CIRCLE, "pos": pos, "vel": Vector2.ZERO, "life": 0.14, "size": 70.0 * s, "grow": 200.0 * s,
 		"col": Color(1, 1, 0.85, 0.95), "col2": Color(1, 0.8, 0.3, 0.0), "grav": 0.0, "drag": 0.0})
 	ring(pos, 160.0 * s, Color(1, 0.9, 0.6, 0.8))
-	for i in int(16 * s) + 4:
+	for i in int(10 * s) + 3:
 		_add({"k": CIRCLE, "pos": pos + _rand_dir() * randf() * 20.0 * s, "vel": _rand_dir() * randf_range(80, 420) * s,
 			"life": randf_range(0.35, 0.7), "size": randf_range(14, 30) * s, "grow": -10.0,
 			"col": Color(1, 0.95, 0.4), "col2": Color(0.9, 0.2, 0.05, 0.0), "grav": -120.0, "drag": 3.5})
-	for i in int(10 * s) + 3:
+	for i in int(6 * s) + 2:
 		_add({"k": CIRCLE, "pos": pos + _rand_dir() * 15.0 * s, "vel": Vector2(randf_range(-80, 80), randf_range(-160, -40)) * s,
 			"life": randf_range(0.9, 1.7), "size": randf_range(16, 30) * s, "grow": 26.0 * s,
 			"col": Color(0.35, 0.33, 0.32, 0.75), "col2": Color(0.55, 0.55, 0.55, 0.0), "grav": -40.0, "drag": 1.5})

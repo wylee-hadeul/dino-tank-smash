@@ -3,6 +3,8 @@ extends Node2D
 
 const Upgrades = preload("res://scripts/upgrades.gd")
 
+const Stages = preload("res://scripts/stages.gd")
+
 var main
 var font: Font
 var card_box := StyleBoxFlat.new()
@@ -51,7 +53,7 @@ func _draw() -> void:
 		return
 
 	var d = main.dino
-	if main.state != main.State.TITLE:
+	if main.state in [main.State.PLAYING, main.State.UPGRADE]:
 		# 체력/포효 게이지
 		_text(Vector2(18, 45), "체력", 24, Color.WHITE)
 		var hp_col := Color("5ee35e") if d.hp > 35.0 else Color("ff5252")
@@ -75,12 +77,16 @@ func _draw() -> void:
 			x += w + 14.0
 		# 점수
 		_text(Vector2(v.x * 0.5, 50), "%d" % main.score, 44, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
-		_text(Vector2(v.x * 0.5, 78), "최고 %d" % max(main.high_score, main.score), 18, Color(1, 1, 1, 0.75), HORIZONTAL_ALIGNMENT_CENTER)
-		_text(Vector2(v.x - 24, 48), "웨이브 %d" % max(main.wave, 1), 32, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
-		_text(Vector2(v.x - 24, 78), "격파 %d" % main.kills, 20, Color(1, 1, 1, 0.75), HORIZONTAL_ALIGNMENT_RIGHT)
+		_text(Vector2(v.x * 0.5, 76), "처치 %d" % main.kills, 18, Color(1, 1, 1, 0.75), HORIZONTAL_ALIGNMENT_CENTER)
+		var wave_txt := "보스전" if main.wave >= Stages.WAVES_PER_STAGE else "웨이브 %d/%d" % [max(main.wave, 1), Stages.WAVES_PER_STAGE]
+		_text(Vector2(v.x - 24, 44), "스테이지 %d" % main.stage, 30, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
+		_text(Vector2(v.x - 24, 74), wave_txt, 22, Color(1, 1, 1, 0.8), HORIZONTAL_ALIGNMENT_RIGHT)
+		_gold_label(v.x - 24, 106, main.run_gold, 24)
+		if main.boss and not main.boss.dead:
+			_boss_bar(v, main.boss)
 		if main.combo >= 2:
 			var cs: int = 34 + min(main.combo, 8) * 3
-			_text(Vector2(v.x * 0.5, 130), "콤보 x%d" % main.combo, cs, Color(1, 0.55, 0.2, clamp(main.combo_t, 0.0, 1.0)), HORIZONTAL_ALIGNMENT_CENTER)
+			_text(Vector2(v.x * 0.5, 168), "콤보 x%d" % main.combo, cs, Color(1, 0.55, 0.2, clamp(main.combo_t, 0.0, 1.0)), HORIZONTAL_ALIGNMENT_CENTER)
 
 	if main.banner_t > 0.0 and main.state == main.State.PLAYING:
 		var a: float = clamp(main.banner_t * 2.0, 0.0, 1.0)
@@ -101,17 +107,24 @@ func _draw() -> void:
 		_text(Vector2(v.x * 0.5, v.y * 0.67), "날아오는 포탄을 물어서 되받아쳐라!  점프해서 탱크를 밟아라!", 22, Color(1, 1, 1, 0.85), HORIZONTAL_ALIGNMENT_CENTER, 6)
 		if main.high_score > 0:
 			_text(Vector2(v.x * 0.5, v.y * 0.74), "최고 기록 %d" % main.high_score, 26, Color(1, 0.9, 0.4), HORIZONTAL_ALIGNMENT_CENTER)
-	elif main.state == main.State.GAMEOVER:
-		var a: float = clamp(main.gameover_t * 1.5, 0.0, 1.0)
-		draw_rect(Rect2(Vector2.ZERO, v), Color(0.2, 0, 0, 0.45 * a))
-		_text(Vector2(v.x * 0.5, v.y * 0.32), "게임 오버", 110, Color(1, 0.35, 0.3, a), HORIZONTAL_ALIGNMENT_CENTER, 14)
-		_text(Vector2(v.x * 0.5, v.y * 0.44), "점수 %d" % main.score, 48, Color(1, 1, 1, a), HORIZONTAL_ALIGNMENT_CENTER)
-		var best_txt := "최고 기록 갱신!" if main.score >= main.high_score and main.score > 0 else "최고 기록 %d" % main.high_score
-		_text(Vector2(v.x * 0.5, v.y * 0.52), best_txt, 32, Color(1, 0.9, 0.4, a), HORIZONTAL_ALIGNMENT_CENTER)
-		_text(Vector2(v.x * 0.5, v.y * 0.59), "웨이브 %d  /  적 %d대 격파" % [main.wave, main.kills], 26, Color(1, 1, 1, a * 0.85), HORIZONTAL_ALIGNMENT_CENTER)
-		if main.gameover_t > 2.2:
-			var blink := 0.55 + sin(tm * 5.0) * 0.45
-			_text(Vector2(v.x * 0.5, v.y * 0.7), "터치해서 다시 시작" if main.touch.enabled else "아무 키나 눌러 다시 시작", 42, Color(1, 1, 1, blink), HORIZONTAL_ALIGNMENT_CENTER)
+
+
+func _gold_label(right_x: float, y: float, amount: int, size := 34) -> void:
+	var s := "%d" % amount
+	var w := font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	_text(Vector2(right_x, y), s, size, Color("ffca28"), HORIZONTAL_ALIGNMENT_RIGHT)
+	var c := Vector2(right_x - w - size * 0.6, y - size * 0.33)
+	var r := size * 0.42
+	draw_circle(c, r, Color("b8860b"))
+	draw_circle(c, r * 0.82, Color("ffca28"))
+	draw_arc(c, r * 0.55, 0.0, TAU, 20, Color("e0a800"), r * 0.18)
+
+
+func _boss_bar(v: Vector2, b) -> void:
+	var w: float = min(620.0, v.x - 760.0)
+	var r := Rect2(v.x * 0.5 - w * 0.5, 120, w, 20)
+	_text(Vector2(v.x * 0.5, 113), b.boss_name + ("  (분노!)" if b.enraged() else ""), 24, Color("ff8a80"), HORIZONTAL_ALIGNMENT_CENTER, 6)
+	_bar(r, b.hp / b.max_hp, Color("e53935") if not b.enraged() else Color(1, 0.3 + sin(main.time * 10.0) * 0.2, 0.1))
 
 
 func _draw_upgrade(v: Vector2, tm: float) -> void:

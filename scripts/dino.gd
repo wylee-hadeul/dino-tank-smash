@@ -33,26 +33,45 @@ var land_squash := 0.0
 var dead := false
 var death_t := 0.0
 var anim_t := 0.0
-var levels := {}  # 강화 id -> 레벨
+var levels := {}  # 스테이지 내 강화 카드 id -> 레벨
+var meta := {}    # 아웃게임 영구 강화 id -> 레벨
+var stagger_t := 0.0  # 넉백 중에는 조작 불가
+var god := false      # 테스트용 무적
 
 
 func lv(id: String) -> int:
 	return levels.get(id, 0)
 
 
+func mlv(id: String) -> int:
+	return meta.get(id, 0)
+
+
+## 영구 강화를 반영해 시작 상태를 만든다.
+func setup_meta(m: Dictionary) -> void:
+	meta = m
+	max_hp = _calc_max_hp()
+	hp = max_hp
+	roar_meter = 20.0 * mlv("roar")
+
+
+func _calc_max_hp() -> float:
+	return 100.0 + 12.0 * mlv("hp") + 25.0 * lv("hp")
+
+
 func apply_upgrade(id: String) -> void:
 	levels[id] = lv(id) + 1
 	if id == "hp":
-		max_hp = 100.0 + 25.0 * lv("hp")
+		max_hp = _calc_max_hp()
 		hp = max_hp
 
 
 func speed() -> float:
-	return SPEED * (1.0 + 0.15 * lv("speed"))
+	return SPEED * (1.0 + 0.15 * lv("speed")) * (1.0 + 0.05 * mlv("speed"))
 
 
 func bite_damage() -> float:
-	return 28.0 * (1.0 + 0.35 * lv("bite"))
+	return 28.0 * (1.0 + 0.35 * lv("bite")) * (1.0 + 0.1 * mlv("bite"))
 
 
 func stomp_damage() -> float:
@@ -60,7 +79,7 @@ func stomp_damage() -> float:
 
 
 func roar_damage() -> float:
-	return 55.0 * (1.0 + 0.3 * lv("roar"))
+	return 55.0 * (1.0 + 0.3 * lv("roar")) * (1.0 + 0.1 * mlv("roar"))
 
 
 func reflect_mult() -> float:
@@ -92,6 +111,7 @@ func update(delta: float) -> void:
 	hurt_t -= delta
 	invuln -= delta
 	roar_t -= delta
+	stagger_t -= delta
 	land_squash = max(land_squash - delta * 4.0, 0.0)
 	if dead:
 		death_t += delta
@@ -106,13 +126,16 @@ func update(delta: float) -> void:
 	if playing and lv("regen") > 0:
 		heal(1.5 * lv("regen") * delta)
 	var dir := 0.0
-	if playing and roar_t <= 0.0:
+	if playing and roar_t <= 0.0 and stagger_t <= 0.0:
 		dir = Input.get_axis("left", "right")
-	vel.x = move_toward(vel.x, dir * speed(), 3200.0 * delta)
+	if stagger_t > 0.0:
+		vel.x = move_toward(vel.x, 0.0, 500.0 * delta)
+	else:
+		vel.x = move_toward(vel.x, dir * speed(), 3200.0 * delta)
 	if dir != 0.0:
 		facing = sign(dir)
 
-	if playing:
+	if playing and stagger_t <= 0.0:
 		if on_ground and Input.is_action_just_pressed("jump"):
 			vel.y = JUMP_V * (1.0 + 0.12 * lv("jump"))
 			on_ground = false
@@ -138,6 +161,8 @@ func update(delta: float) -> void:
 		on_ground = true
 	else:
 		on_ground = false
+	if position.x < 145.0 or position.x > main.view.x - 145.0:
+		vel.x = 0.0
 	position.x = clamp(position.x, 145.0, main.view.x - 145.0)  # 머리/꼬리가 잘리지 않게
 	walk_phase += abs(vel.x) * delta * 0.028
 	queue_redraw()
@@ -150,10 +175,30 @@ func _bite() -> void:
 	main.on_bite(bite_rect())
 
 
+## 넉백: 일정 시간 조작 불가 상태로 날아간다.
+func knockback(v: Vector2, t := 0.4) -> void:
+	if dead:
+		return
+	vel = v
+	on_ground = false
+	stagger_t = t
+
+
+func revive() -> void:
+	dead = false
+	death_t = 0.0
+	hp = max_hp * 0.5
+	invuln = 2.5
+	vel = Vector2.ZERO
+	stagger_t = 0.0
+
+
 func hurt(dmg: float) -> void:
 	if dead or invuln > 0.0:
 		return
-	dmg *= 1.0 - 0.15 * lv("armor")
+	if god:
+		dmg = 0.0
+	dmg *= (1.0 - 0.15 * lv("armor")) * (1.0 - 0.04 * mlv("armor"))
 	hp -= dmg
 	main.dlog("dino hurt -%.0f hp=%.0f" % [dmg, max(hp, 0.0)])
 	hurt_t = 0.25
