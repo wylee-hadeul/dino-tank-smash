@@ -17,6 +17,13 @@ var trail_t := 0.0
 
 
 func update(delta: float) -> void:
+	if has_meta("puppet"):
+		vel.y += GRAVITY * grav * delta
+		position += vel * delta
+		position = position.lerp(get_meta("net_pos", position), min(1.0, delta * 6.0))
+		rotation = vel.angle()
+		queue_redraw()
+		return
 	vel.y += GRAVITY * grav * delta
 	position += vel * delta
 	rotation = vel.angle()

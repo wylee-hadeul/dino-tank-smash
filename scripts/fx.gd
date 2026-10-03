@@ -30,6 +30,8 @@ func puff(pos: Vector2, col: Color, size: float) -> void:
 
 
 func explosion(pos: Vector2, s: float) -> void:
+	if main and main.coop:
+		main.coop.recfx("explosion", [pos, s])
 	_add({"k": CIRCLE, "pos": pos, "vel": Vector2.ZERO, "life": 0.14, "size": 70.0 * s, "grow": 200.0 * s,
 		"col": Color(1, 1, 0.85, 0.95), "col2": Color(1, 0.8, 0.3, 0.0), "grav": 0.0, "drag": 0.0})
 	ring(pos, 160.0 * s, Color(1, 0.9, 0.6, 0.8))
@@ -48,6 +50,8 @@ func explosion(pos: Vector2, s: float) -> void:
 
 
 func debris(pos: Vector2, col: Color, count: int) -> void:
+	if main and main.coop:
+		main.coop.recfx("debris", [pos, col, count])
 	for i in count:
 		_add({"k": DEBRIS, "pos": pos + Vector2(randf_range(-30, 30), randf_range(-15, 15)),
 			"vel": Vector2(randf_range(-420, 420), randf_range(-850, -300)), "life": randf_range(1.0, 1.8),
@@ -56,6 +60,8 @@ func debris(pos: Vector2, col: Color, count: int) -> void:
 
 
 func sparks(pos: Vector2) -> void:
+	if main and main.coop:
+		main.coop.recfx("sparks", [pos])
 	for i in 12:
 		_add({"k": DEBRIS, "pos": pos, "vel": _rand_dir() * randf_range(200, 520), "life": randf_range(0.2, 0.45),
 			"size": randf_range(3, 6), "grow": -6.0, "rot": randf() * TAU, "spin": 20.0,
@@ -63,6 +69,8 @@ func sparks(pos: Vector2) -> void:
 
 
 func muzzle(pos: Vector2, dir: Vector2) -> void:
+	if main and main.coop:
+		main.coop.recfx("muzzle", [pos, dir])
 	_add({"k": CIRCLE, "pos": pos + dir * 10.0, "vel": dir * 60.0, "life": 0.1, "size": 22.0, "grow": 60.0,
 		"col": Color(1, 0.95, 0.6), "col2": Color(1, 0.5, 0.1, 0.0), "grav": 0.0, "drag": 0.0})
 	for i in 5:
@@ -71,6 +79,8 @@ func muzzle(pos: Vector2, dir: Vector2) -> void:
 
 
 func dust(pos: Vector2, s: float) -> void:
+	if main and main.coop:
+		main.coop.recfx("dust", [pos, s])
 	for i in int(10 * s):
 		var side := -1.0 if i % 2 == 0 else 1.0
 		_add({"k": CIRCLE, "pos": pos + Vector2(side * randf_range(10, 40), -4), "vel": Vector2(side * randf_range(80, 260), randf_range(-60, -10)) * s,
@@ -79,11 +89,15 @@ func dust(pos: Vector2, s: float) -> void:
 
 
 func ring(pos: Vector2, radius: float, col: Color) -> void:
+	if main and main.coop:
+		main.coop.recfx("ring", [pos, radius, col])
 	_add({"k": RING, "pos": pos, "vel": Vector2.ZERO, "life": 0.45, "size": 10.0, "grow": radius / 0.45,
 		"col": col, "col2": Color(col, 0.0), "grav": 0.0, "drag": 0.0})
 
 
 func text(pos: Vector2, s: String, col: Color) -> void:
+	if main and main.coop:
+		main.coop.recfx("text", [pos, s, col])
 	_add({"k": TEXT, "pos": pos, "vel": Vector2(0, -70), "life": 1.1, "size": 30.0, "grow": 0.0, "txt": s,
 		"col": col, "col2": Color(col, 0.0), "grav": 0.0, "drag": 1.0})
 

@@ -32,10 +32,16 @@ func get_rect() -> Rect2:
 
 
 func update(delta: float) -> void:
+	if has_meta("puppet"):
+		# 같이 하기 참가자 화면: 방장이 보낸 위치로 따라가기만 한다
+		position = position.lerp(get_meta("net_pos", position), min(1.0, delta * 12.0))
+		t += delta
+		queue_redraw()
+		return
 	t += delta
 	mode_t += delta
 	flash = max(flash - delta, 0.0)
-	var d = main.dino
+	var d = main.target_for(position)
 	match mode:
 		APPROACH:
 			var target := Vector2(clamp(d.position.x + offset_x, 60.0, main.view.x - 60.0), main.ground_y - 330.0)
@@ -66,7 +72,7 @@ func _explode(direct: bool) -> void:
 	main.fx.explosion(position, 0.6)
 	main.sfx.play("small_boom", -4.0)
 	main.add_shake(5.0)
-	var d = main.dino
+	var d = main.target_for(position)
 	if direct or (d.position + Vector2(0, -70)).distance_to(position) < 100.0:
 		d.hurt(damage)
 
@@ -100,6 +106,6 @@ func _draw() -> void:
 	draw_circle(Vector2(0, 2), 5.0, Color(1, 0.1, 0.1) if blink or mode == DIVE else Color(0.6, 0.1, 0.1))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if mode == AIM:
-		var d = main.dino
+		var d = main.target_for(position)
 		var tgt: Vector2 = d.position + Vector2(0, -60) - position
 		draw_dashed_line(Vector2.ZERO, tgt, Color(1, 0.2, 0.2, 0.35), 2.0, 10.0)

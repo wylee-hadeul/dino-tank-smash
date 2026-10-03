@@ -6,6 +6,7 @@ const RATE := 22050
 var streams := {}
 var players: Array = []
 var idx := 0
+var recorder = null  # 같이 하기: 방장이 소리를 참가자에게 전달
 
 
 func _ready() -> void:
@@ -25,7 +26,9 @@ func _ready() -> void:
 	streams["reflect"] = _sweep(0.22, 520.0, 1600.0, 0.35, true)
 
 
-func play(sname: String, vol_db := 0.0, pitch := 1.0) -> void:
+func play(sname: String, vol_db := 0.0, pitch := 1.0, replay := false) -> void:
+	if recorder != null and not replay:
+		recorder.call(sname, vol_db, pitch)
 	if not streams.has(sname):
 		return
 	var p: AudioStreamPlayer = players[idx]

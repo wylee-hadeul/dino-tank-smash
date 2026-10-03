@@ -9,9 +9,13 @@ const HEIGHT := 140.0
 const BITE_TIME := 0.24
 const BITE_CD := 0.32
 
-const BODY := Color("5cb85c")
-const DARK := Color("2e7d32")
-const BELLY := Color("d4edb0")
+## 같이 하기에서 공룡마다 색이 다르다 (초록/파랑/주황/분홍)
+const PALETTES := [
+	[Color("5cb85c"), Color("2e7d32"), Color("d4edb0")],
+	[Color("4f8fd8"), Color("2a5a9e"), Color("cfe2fa")],
+	[Color("f0a03c"), Color("b86a14"), Color("fbe3c0")],
+	[Color("e57aa8"), Color("a8436f"), Color("f9d6e6")],
+]
 const OUTLINE := Color("163316")
 const TOOTH := Color("fffbe8")
 
@@ -36,6 +40,20 @@ var anim_t := 0.0
 var levels := {}  # 스테이지 내 강화 카드 id -> 레벨
 var meta := {}    # 아웃게임 영구 강화 id -> 레벨
 var stagger_t := 0.0  # 넉백 중에는 조작 불가
+var is_remote := false  # 다른 사람의 공룡 (방장: 대리 객체, 참가자: 표시용)
+var net_id := ""
+var nick := ""
+var net_pos := Vector2.ZERO
+var slot := 0:
+	set(v):
+		slot = v
+		var pal: Array = PALETTES[v % PALETTES.size()]
+		body_col = pal[0]
+		dark_col = pal[1]
+		belly_col = pal[2]
+var body_col := Color("5cb85c")
+var dark_col := Color("2e7d32")
+var belly_col := Color("d4edb0")
 var god := false      # 테스트용 무적
 
 
@@ -87,6 +105,9 @@ func reflect_mult() -> float:
 
 
 func on_kill() -> void:
+	if is_remote:
+		main.coop.send_rpc(net_id, {"k": "kill"})
+		return
 	if lv("vamp") > 0 and not dead:
 		heal(4.0 * lv("vamp"))
 
@@ -105,6 +126,17 @@ func bite_rect() -> Rect2:
 
 func update(delta: float) -> void:
 	anim_t += delta
+	if is_remote:
+		bite_t -= delta
+		roar_t -= delta
+		invuln -= delta
+		hurt_t -= delta
+		if main.mode == "guest":
+			position = position.lerp(net_pos, min(1.0, delta * 12.0))
+		death_t = death_t + delta if dead else 0.0
+		walk_phase += abs(vel.x) * delta * 0.028
+		queue_redraw()
+		return
 	prev_y = position.y
 	bite_cd -= delta
 	bite_t -= delta
@@ -177,6 +209,9 @@ func _bite() -> void:
 
 ## 넉백: 일정 시간 조작 불가 상태로 날아간다.
 func knockback(v: Vector2, t := 0.4) -> void:
+	if is_remote:
+		main.coop.send_rpc(net_id, {"k": "kb", "x": v.x, "y": v.y, "v": t})
+		return
 	if dead:
 		return
 	vel = v
@@ -194,6 +229,12 @@ func revive() -> void:
 
 
 func hurt(dmg: float) -> void:
+	if is_remote:
+		if not dead and invuln <= 0.0:
+			invuln = 0.55
+			hurt_t = 0.25
+			main.coop.send_rpc(net_id, {"k": "hurt", "v": dmg})
+		return
 	if dead or invuln > 0.0:
 		return
 	if god:
@@ -214,10 +255,16 @@ func hurt(dmg: float) -> void:
 
 
 func heal(amount: float) -> void:
+	if is_remote:
+		main.coop.send_rpc(net_id, {"k": "heal", "v": amount})
+		return
 	hp = min(hp + amount, max_hp)
 
 
 func add_roar(amount: float) -> void:
+	if is_remote:
+		main.coop.send_rpc(net_id, {"k": "gain", "v": amount})
+		return
 	var was_full := roar_meter >= 100.0
 	roar_meter = min(roar_meter + amount * (1.0 + 0.4 * lv("roar")), 100.0)
 	if not was_full and roar_meter >= 100.0:
@@ -289,19 +336,19 @@ func _draw() -> void:
 	var sway := sin(anim_t * 4.0) * 7.0
 
 	# 꼬리
-	_poly(PackedVector2Array([Vector2(-30, -112 + breathe), Vector2(-120, -96 + sway), Vector2(-172, -82 + sway * 1.5), Vector2(-118, -78 + sway), Vector2(-34, -62)]), BODY)
+	_poly(PackedVector2Array([Vector2(-30, -112 + breathe), Vector2(-120, -96 + sway), Vector2(-172, -82 + sway * 1.5), Vector2(-118, -78 + sway), Vector2(-34, -62)]), body_col)
 	# 뒷다리
-	_leg(Vector2(-22, -66), walk_phase + PI, DARK)
+	_leg(Vector2(-22, -66), walk_phase + PI, dark_col)
 	# 몸통
-	_poly(_ellipse(Vector2(0, -96 + breathe), Vector2(64, 46), -0.12), BODY)
-	draw_colored_polygon(_ellipse(Vector2(16, -80 + breathe), Vector2(40, 26), -0.2), _c(BELLY))
+	_poly(_ellipse(Vector2(0, -96 + breathe), Vector2(64, 46), -0.12), body_col)
+	draw_colored_polygon(_ellipse(Vector2(16, -80 + breathe), Vector2(40, 26), -0.2), _c(belly_col))
 	# 등 가시
 	for i in 6:
 		var x := -48.0 + i * 17.0
 		var y := -96.0 + breathe - 46.0 * sqrt(max(0.0, 1.0 - pow(x / 66.0, 2))) + x * 0.12
-		_poly(PackedVector2Array([Vector2(x - 8, y + 6), Vector2(x - 2, y - 16), Vector2(x + 8, y + 6)]), DARK)
+		_poly(PackedVector2Array([Vector2(x - 8, y + 6), Vector2(x - 2, y - 16), Vector2(x + 8, y + 6)]), dark_col)
 	# 목
-	_poly(PackedVector2Array([Vector2(22, -128 + breathe), Vector2(52, -168), Vector2(84, -156), Vector2(64, -96 + breathe)]), BODY, false)
+	_poly(PackedVector2Array([Vector2(22, -128 + breathe), Vector2(52, -168), Vector2(84, -156), Vector2(64, -96 + breathe)]), body_col, false)
 
 	# 머리 (물기/포효 애니메이션)
 	var jaw := 0.06 + sin(anim_t * 2.0) * 0.03
@@ -332,12 +379,12 @@ func _draw() -> void:
 		for p in tooth:
 			tt.append(head_xf * p.rotated(jaw))
 		draw_colored_polygon(tt, TOOTH)
-	_poly(lower, BODY)
+	_poly(lower, body_col)
 	# 위턱 + 이빨
 	for i in 6:
 		var tx := 10.0 + i * 11.0
 		draw_colored_polygon(head_xf * PackedVector2Array([Vector2(tx, -1), Vector2(tx + 4, 9), Vector2(tx + 8, -1)]), TOOTH)
-	_poly(head_xf * PackedVector2Array([Vector2(-14, -36), Vector2(40, -40), Vector2(64, -30), Vector2(74, -14), Vector2(72, 0), Vector2(-8, 2), Vector2(-20, -14)]), BODY)
+	_poly(head_xf * PackedVector2Array([Vector2(-14, -36), Vector2(40, -40), Vector2(64, -30), Vector2(74, -14), Vector2(72, 0), Vector2(-8, 2), Vector2(-20, -14)]), body_col)
 	# 눈, 눈썹, 콧구멍
 	if dead:
 		var e := head_xf * Vector2(34, -22)
@@ -355,12 +402,18 @@ func _draw() -> void:
 	var elbow := shoulder + Vector2(14, 10).rotated(arm_a)
 	draw_line(shoulder, elbow, OUTLINE, 11.0)
 	draw_line(elbow, elbow + Vector2(10, -6), OUTLINE, 9.0)
-	draw_line(shoulder, elbow, _c(BODY), 6.0)
-	draw_line(elbow, elbow + Vector2(10, -6), _c(BODY), 4.0)
+	draw_line(shoulder, elbow, _c(body_col), 6.0)
+	draw_line(elbow, elbow + Vector2(10, -6), _c(body_col), 4.0)
 	# 앞다리
-	_leg(Vector2(10, -60), walk_phase, BODY)
+	_leg(Vector2(10, -60), walk_phase, body_col)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
+	# 같이 하기 이름표
+	if nick != "" and main.mode != "solo":
+		var font := ThemeDB.fallback_font
+		var w := font.get_string_size(nick, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x
+		draw_string_outline(font, Vector2(-w * 0.5, -205), nick, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, 6, Color(0, 0, 0, 0.8))
+		draw_string(font, Vector2(-w * 0.5, -205), nick, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color.WHITE if not is_remote else body_col.lightened(0.4))
 	# 포효 게이지가 가득 차면 오라
 	if roar_meter >= 100.0 and not dead:
 		var a := 0.25 + sin(anim_t * 8.0) * 0.12

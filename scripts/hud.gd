@@ -7,6 +7,7 @@ const Stages = preload("res://scripts/stages.gd")
 
 var main
 var font: Font
+var waiting_others := false  # 같이 하기: 내 카드는 골랐고 다른 사람을 기다리는 중
 var card_box := StyleBoxFlat.new()
 
 
@@ -84,6 +85,19 @@ func _draw() -> void:
 		_gold_label(v.x - 24, 106, main.run_gold, 24)
 		if main.boss and not main.boss.dead:
 			_boss_bar(v, main.boss)
+		# 같이 하기: 동료 체력
+		if main.mode != "solo":
+			var ty := 140.0
+			for md in main.dinos:
+				if not md.is_remote:
+					continue
+				draw_circle(Vector2(30, ty - 6), 9.0, md.body_col)
+				_text(Vector2(46, ty), md.nick, 18, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, 4)
+				draw_rect(Rect2(120, ty - 14, 120, 12), Color(0, 0, 0, 0.6))
+				draw_rect(Rect2(121, ty - 13, 118 * clamp(md.hp / max(md.max_hp, 1.0), 0.0, 1.0), 10), Color("5ee35e") if not md.dead else Color("ff5252"))
+				if md.dead:
+					_text(Vector2(250, ty), "쓰러짐", 16, Color("ff8a80"), HORIZONTAL_ALIGNMENT_LEFT, 3)
+				ty += 26.0
 		if main.combo >= 2:
 			var cs: int = 34 + min(main.combo, 8) * 3
 			_text(Vector2(v.x * 0.5, 168), "콤보 x%d" % main.combo, cs, Color(1, 0.55, 0.2, clamp(main.combo_t, 0.0, 1.0)), HORIZONTAL_ALIGNMENT_CENTER)
@@ -130,6 +144,9 @@ func _boss_bar(v: Vector2, b) -> void:
 func _draw_upgrade(v: Vector2, tm: float) -> void:
 	var a: float = clamp(main.upgrade_t * 3.0, 0.0, 1.0)
 	draw_rect(Rect2(Vector2.ZERO, v), Color(0, 0, 0, 0.6 * a))
+	if waiting_others:
+		_text(Vector2(v.x * 0.5, v.y * 0.5), "다른 공룡이 고르는 중" + ".".repeat(int(tm * 2.0) % 4), 48, Color(1, 1, 1, 0.9), HORIZONTAL_ALIGNMENT_CENTER, 10)
+		return
 	_text(Vector2(v.x * 0.5, 150 - (1.0 - a) * 30.0), "능력 강화를 선택하세요", 58, Color(1, 0.9, 0.35, a), HORIZONTAL_ALIGNMENT_CENTER, 12)
 	var rects: Array = main.card_rects()
 	var d = main.dino

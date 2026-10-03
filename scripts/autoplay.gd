@@ -30,6 +30,9 @@ var manual_pick := false
 var god := false
 var start_stage := 0
 var shot_states := {}  # 화면별 첫 스크린샷 여부
+var room_code := ""  # --host=CODE: 방을 만들고 기다렸다 시작
+var join_code := ""  # --join=CODE: 코드로 참가
+var room_wait := 30.0
 
 
 func configure(args: PackedStringArray) -> void:
@@ -43,6 +46,12 @@ func configure(args: PackedStringArray) -> void:
 			suicide_at = float(a.substr(10))
 		elif a == "--manualpick":
 			manual_pick = true
+		elif a.begins_with("--host="):
+			room_code = a.substr(7)
+		elif a.begins_with("--join="):
+			join_code = a.substr(7)
+		elif a.begins_with("--wait="):
+			room_wait = float(a.substr(7))
 		elif a == "--god":
 			god = true
 		elif a.begins_with("--stage="):
@@ -80,7 +89,10 @@ func _process(delta: float) -> void:
 				wait_t = 0.0
 		main.State.LOBBY:
 			_first_shot("lobby")
-			if wait_t > 1.2:
+			if wait_t > 1.2 and (room_code != "" or join_code != ""):
+				wait_t = 0.0
+				main.menu.activate("multi")
+			elif wait_t > 1.2:
 				wait_t = 0.0
 				if _cheapest_affordable() != "":
 					main.menu.activate("shop")
@@ -97,18 +109,47 @@ func _process(delta: float) -> void:
 					main.menu.activate("buy:" + id)
 				else:
 					main.menu.activate("back")
+		main.State.MULTI:
+			_first_shot("multi")
+			if wait_t > 0.8:
+				wait_t = 0.0
+				main.menu.activate("create" if room_code != "" else "join")
+		main.State.JOIN:
+			if wait_t > 0.3 and main.menu.code_input.length() < 4:
+				main.menu.activate("key:" + join_code[main.menu.code_input.length()])
+				wait_t = 0.0
+			elif main.menu.code_input.length() == 4 and main.coop.net.status == "idle":
+				_first_shot("join")
+				main.menu.activate("key:참가")
+			elif main.coop.net.status == "error" and wait_t > 3.0:
+				main.dlog("join error: " + main.coop.net.error)
+				main.coop.net.leave()
+				main.menu.code_input = ""
+				wait_t = 0.0
+		main.State.ROOM:
+			if wait_t > 1.5:
+				_first_shot("room_" + ("host" if main.coop.net.is_host else "guest"))
+			if main.coop.net.is_host and main.coop.net.status == "hosting" and ((main.coop.roster.size() >= 2 and wait_t > 3.0) or wait_t > room_wait):
+				main.menu.activate("start")
+				wait_t = 0.0
 		main.State.UPGRADE:
 			if main.upgrade_t > 1.2 and not manual_pick:
 				_first_shot("upgrade", true)
 				main.choose_upgrade(randi() % main.upgrade_choices.size())
 		main.State.STAGE_CLEAR:
 			_first_shot("clear", true)
-			if wait_t > 2.5:
+			if wait_t > 2.5 and main.mode == "host":
+				wait_t = 0.0
+				main.menu.activate("next_stage")
+			elif wait_t > 2.5 and main.mode == "solo":
 				wait_t = 0.0
 				main.menu.activate("lobby")
 		main.State.GAMEOVER:
 			_first_shot("gameover", true)
-			if wait_t > 3.0:
+			if wait_t > 3.0 and main.mode == "host":
+				wait_t = 0.0
+				main.menu.activate("retry")
+			elif wait_t > 3.0 and main.mode == "solo":
 				wait_t = 0.0
 				main.menu.activate("lobby")
 		main.State.PLAYING:

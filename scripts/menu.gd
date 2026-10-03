@@ -17,6 +17,7 @@ var focus := 0
 var open_t := 0.0
 var toast := ""
 var toast_t := 0.0
+var code_input := ""
 
 
 func _ready() -> void:
@@ -33,7 +34,7 @@ func open() -> void:
 
 
 func active() -> bool:
-	return main.state in [main.State.LOBBY, main.State.SHOP, main.State.STAGE_CLEAR, main.State.GAMEOVER]
+	return main.state in [main.State.LOBBY, main.State.SHOP, main.State.STAGE_CLEAR, main.State.GAMEOVER, main.State.MULTI, main.State.JOIN, main.State.ROOM]
 
 
 func _process(delta: float) -> void:
@@ -60,6 +61,35 @@ func layout() -> Array:
 			out.append({"id": "next", "rect": Rect2(panel.end.x + 24, cy - 48, 96, 96), "kind": "arrow", "dir": 1, "enabled": main.selected_stage < main.unlocked})
 			out.append({"id": "play", "rect": Rect2(v.x * 0.5 - 340, v.y - 150, 320, 100), "label": "출격!", "col": COL_PRIMARY, "enabled": true})
 			out.append({"id": "shop", "rect": Rect2(v.x * 0.5 + 20, v.y - 150, 320, 100), "label": "강화 상점", "col": COL_SHOP, "enabled": true})
+			out.append({"id": "multi", "rect": Rect2(24, v.y - 150, 220, 100), "label": "같이 하기", "col": Color("1565c0"), "size": 34, "enabled": true})
+		main.State.MULTI:
+			var web: bool = main.coop.net.available
+			out.append({"id": "back", "rect": Rect2(24, 22, 150, 64), "label": "뒤로", "col": COL_SECOND, "enabled": true})
+			out.append({"id": "create", "rect": Rect2(v.x * 0.5 - 340, v.y * 0.5 - 20, 320, 120), "label": "방 만들기", "col": Color("1565c0"), "enabled": web})
+			out.append({"id": "join", "rect": Rect2(v.x * 0.5 + 20, v.y * 0.5 - 20, 320, 120), "label": "코드로 참가", "col": Color("6a1b9a"), "enabled": web})
+		main.State.JOIN:
+			out.append({"id": "back_multi", "rect": Rect2(24, 22, 150, 64), "label": "뒤로", "col": COL_SECOND, "enabled": true})
+			var keys := ["1", "2", "3", "4", "5", "6", "7", "8", "9", "지우기", "0", "참가"]
+			var kw := 120.0
+			var kh := 84.0
+			var x0: float = v.x * 0.5 + 40
+			for i in keys.size():
+				var k: String = keys[i]
+				var col := COL_SECOND
+				if k == "참가":
+					col = COL_PRIMARY
+				elif k == "지우기":
+					col = Color("b71c1c")
+				var en := true
+				if k == "참가":
+					en = code_input.length() == 4 and main.coop.net.status != "connecting"
+				out.append({"id": "key:" + k, "rect": Rect2(x0 + (i % 3) * (kw + 12), 150.0 + (i / 3) * (kh + 12), kw, kh), "label": k, "col": col, "size": 36 if k.length() == 1 else 26, "enabled": en})
+		main.State.ROOM:
+			out.append({"id": "leave", "rect": Rect2(24, 22, 170, 64), "label": "나가기", "col": Color("b71c1c"), "enabled": true})
+			if main.coop.net.is_host:
+				out.append({"id": "rs_prev", "rect": Rect2(v.x * 0.5 + 60, v.y - 250, 80, 80), "kind": "arrow", "dir": -1, "enabled": main.coop.room_stage > 1})
+				out.append({"id": "rs_next", "rect": Rect2(v.x * 0.5 + 420, v.y - 250, 80, 80), "kind": "arrow", "dir": 1, "enabled": main.coop.room_stage < main.unlocked})
+				out.append({"id": "start", "rect": Rect2(v.x * 0.5 + 100, v.y - 140, 360, 100), "label": "시작!", "col": COL_PRIMARY, "enabled": main.coop.net.status == "hosting"})
 		main.State.SHOP:
 			out.append({"id": "back", "rect": Rect2(24, 22, 150, 64), "label": "뒤로", "col": COL_SECOND, "enabled": true})
 			var cols := 4
@@ -71,6 +101,14 @@ func layout() -> Array:
 				var u: Dictionary = Meta.LIST[i]
 				var r := Rect2(x0 + (i % cols) * (cw + gap), 112.0 + (i / cols) * (ch + gap), cw, ch)
 				out.append({"id": "buy:" + u.id, "rect": r, "kind": "card", "meta": u, "enabled": true})
+		main.State.STAGE_CLEAR, main.State.GAMEOVER when main.mode == "guest":
+			pass
+		main.State.STAGE_CLEAR when main.mode == "host":
+			out.append({"id": "next_stage", "rect": Rect2(v.x * 0.5 - 340, v.y - 140, 320, 96), "label": "다음 스테이지", "col": COL_PRIMARY, "enabled": open_t > 0.8})
+			out.append({"id": "to_room", "rect": Rect2(v.x * 0.5 + 20, v.y - 140, 320, 96), "label": "대기실로", "col": COL_SECOND, "enabled": open_t > 0.8})
+		main.State.GAMEOVER when main.mode == "host":
+			out.append({"id": "retry", "rect": Rect2(v.x * 0.5 - 340, v.y - 140, 320, 96), "label": "재도전", "col": COL_PRIMARY, "enabled": open_t > 1.2})
+			out.append({"id": "to_room", "rect": Rect2(v.x * 0.5 + 20, v.y - 140, 320, 96), "label": "대기실로", "col": COL_SECOND, "enabled": open_t > 1.2})
 		main.State.STAGE_CLEAR:
 			out.append({"id": "next_stage", "rect": Rect2(v.x * 0.5 - 340, v.y - 140, 320, 96), "label": "다음 스테이지", "col": COL_PRIMARY, "enabled": open_t > 0.8})
 			out.append({"id": "lobby", "rect": Rect2(v.x * 0.5 + 20, v.y - 140, 320, 96), "label": "로비로", "col": COL_SECOND, "enabled": open_t > 0.8})
@@ -159,11 +197,48 @@ func activate(id: String) -> void:
 		"back", "lobby":
 			main.goto_lobby()
 		"next_stage":
-			main.start_stage(main.stage + 1)
+			if main.mode == "host":
+				main.coop.host_start(main.stage + 1)
+			else:
+				main.start_stage(main.stage + 1)
 		"retry":
-			main.start_stage(main.stage)
+			if main.mode == "host":
+				main.coop.host_start(main.stage)
+			else:
+				main.start_stage(main.stage)
+		"multi":
+			main.set_state(main.State.MULTI)
+		"back_multi":
+			main.coop.net.leave()
+			main.set_state(main.State.MULTI)
+		"create":
+			main.coop.create_room()
+		"join":
+			code_input = ""
+			main.set_state(main.State.JOIN)
+		"leave":
+			main.coop.leave_room()
+		"rs_prev":
+			main.coop.set_room_stage(main.coop.room_stage - 1)
+		"rs_next":
+			main.coop.set_room_stage(main.coop.room_stage + 1)
+		"start":
+			main.coop.host_start(main.coop.room_stage)
+		"to_room":
+			main.coop.net.send("*", {"t": "room"})
+			main.mode = "solo"
+			main.goto_lobby()
+			main.set_state(main.State.ROOM)
 		_:
-			if id.begins_with("buy:"):
+			if id.begins_with("key:"):
+				var k := id.substr(4)
+				if k == "지우기":
+					code_input = code_input.substr(0, max(code_input.length() - 1, 0))
+				elif k == "참가":
+					main.coop.join_room(code_input)
+				elif code_input.length() < 4:
+					code_input += k
+			elif id.begins_with("buy:"):
 				var mid := id.substr(4)
 				var u := Meta.find(mid)
 				var lvl: int = main.meta.get(mid, 0)
@@ -242,6 +317,14 @@ func _draw() -> void:
 			_draw_shop()
 		main.State.STAGE_CLEAR, main.State.GAMEOVER:
 			_draw_result()
+			if main.mode == "guest" and open_t > 1.0:
+				_text(Vector2(main.view.x * 0.5, main.view.y - 90), "방장의 선택을 기다리는 중...", 30, Color(1, 1, 1, 0.85))
+		main.State.MULTI:
+			_draw_multi()
+		main.State.JOIN:
+			_draw_join()
+		main.State.ROOM:
+			_draw_room()
 	var btns := layout()
 	for i in btns.size():
 		var b: Dictionary = btns[i]
@@ -255,6 +338,75 @@ func _draw() -> void:
 	if toast_t > 0.0:
 		var a: float = clamp(toast_t * 2.0, 0.0, 1.0)
 		_text(Vector2(main.view.x * 0.5, main.view.y - 26), toast, 30, Color(1, 1, 0.6, a))
+
+
+func _draw_multi() -> void:
+	var v: Vector2 = main.view
+	draw_rect(Rect2(Vector2.ZERO, v), Color(0, 0, 0, 0.55))
+	_text(Vector2(v.x * 0.5, 150), "같이 하기", 64, Color("90caf9"), HORIZONTAL_ALIGNMENT_CENTER, 12)
+	_text(Vector2(v.x * 0.5, 210), "친구와 방 코드로 최대 4명까지 함께 싸워요!", 28, Color(1, 1, 1, 0.85), HORIZONTAL_ALIGNMENT_CENTER, 5)
+	if not main.coop.net.available:
+		_text(Vector2(v.x * 0.5, v.y - 80), "같이 하기는 웹(브라우저)에서만 가능합니다", 24, Color(1, 1, 1, 0.6), HORIZONTAL_ALIGNMENT_CENTER, 0)
+
+
+func _draw_join() -> void:
+	var v: Vector2 = main.view
+	draw_rect(Rect2(Vector2.ZERO, v), Color(0, 0, 0, 0.6))
+	_text(Vector2(v.x * 0.5 - 300, 150), "방 코드 입력", 54, Color("e0e0ff"), HORIZONTAL_ALIGNMENT_CENTER, 10)
+	_text(Vector2(v.x * 0.5 - 300, 200), "친구에게 받은 4자리 숫자", 24, Color(1, 1, 1, 0.75), HORIZONTAL_ALIGNMENT_CENTER, 0)
+	for i in 4:
+		var r := Rect2(v.x * 0.5 - 520 + i * 110, 250, 90, 120)
+		_panel(r, Color("b39ddb"), Color(0.1, 0.1, 0.16))
+		if i < code_input.length():
+			_text(r.get_center() + Vector2(0, 24), code_input[i], 66, Color.WHITE)
+	var st: String = main.coop.net.status
+	if st == "connecting":
+		_text(Vector2(v.x * 0.5 - 300, 430), "연결 중...", 30, Color(1, 1, 0.7))
+	elif st == "error":
+		_text(Vector2(v.x * 0.5 - 300, 430), _net_err(), 26, Color("ff8a80"))
+
+
+func _net_err() -> String:
+	match main.coop.net.error:
+		"unavailable-id":
+			return "이미 사용 중인 코드예요. 다시 만들어 주세요"
+		"peer-unavailable":
+			return "방을 찾을 수 없어요. 코드를 확인하세요"
+		"timeout":
+			return "연결 시간이 초과됐어요"
+	return "연결 오류 (%s)" % main.coop.net.error
+
+
+func _draw_room() -> void:
+	var v: Vector2 = main.view
+	var c = main.coop
+	draw_rect(Rect2(Vector2.ZERO, v), Color(0, 0, 0, 0.55))
+	_text(Vector2(v.x * 0.5, 80), "대기실", 54, Color("e0e0ff"), HORIZONTAL_ALIGNMENT_CENTER, 10)
+	var cp := Rect2(v.x * 0.5 - 560, 120, 460, 220)
+	_panel(cp, Color("ffd54f"), Color(0.12, 0.1, 0.05, 0.95))
+	_text(Vector2(cp.get_center().x, cp.position.y + 50), "방 코드", 30, Color(1, 1, 1, 0.8))
+	_text(Vector2(cp.get_center().x, cp.position.y + 150), c.net.code, 100, Color("ffd54f"), HORIZONTAL_ALIGNMENT_CENTER, 10)
+	var st: String = c.net.status
+	var msg := "친구에게 코드를 알려주세요 (최대 4명)" if c.net.is_host else "방장이 시작하기를 기다리는 중" + ".".repeat(int(main.time * 2.0) % 4)
+	if st == "connecting":
+		msg = "방을 여는 중..."
+	elif st == "error":
+		msg = _net_err()
+	_text(Vector2(cp.get_center().x, cp.end.y + 40), msg, 24, Color(1, 1, 1, 0.85), HORIZONTAL_ALIGNMENT_CENTER, 0)
+	for i in 4:
+		var r := Rect2(v.x * 0.5 + 40, 120 + i * 80, 520, 68)
+		var has: bool = i < c.roster.size()
+		_panel(r, Color(0.4, 0.4, 0.5) if has else Color(0.2, 0.2, 0.24), Color(0.1, 0.1, 0.14, 0.9))
+		if has:
+			var e: Dictionary = c.roster[i]
+			var pal: Array = main.dino.PALETTES[i]
+			draw_circle(r.position + Vector2(40, 34), 20.0, pal[0])
+			var me: bool = e.id == c.my_id()
+			_text(Vector2(r.position.x + 76, r.position.y + 46), e.nick + (" (나)" if me else "") + ("   방장" if i == 0 else ""), 30, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, 4)
+		else:
+			_text(Vector2(r.position.x + 76, r.position.y + 46), "빈 자리", 26, Color(0.5, 0.5, 0.55), HORIZONTAL_ALIGNMENT_LEFT, 0)
+	if c.net.is_host:
+		_text(Vector2(v.x * 0.5 + 280, v.y - 196), "스테이지 %d" % c.room_stage, 40, Color.WHITE)
 
 
 func _draw_lobby() -> void:

@@ -93,12 +93,18 @@ func _barrel_len() -> float:
 
 
 func update(delta: float) -> void:
+	if has_meta("puppet"):
+		# 같이 하기 참가자 화면: 방장이 보낸 위치로 따라가기만 한다
+		position = position.lerp(get_meta("net_pos", position), min(1.0, delta * 12.0))
+		t += delta
+		queue_redraw()
+		return
 	t += delta
 	flash = max(flash - delta, 0.0)
 	recoil = max(recoil - delta * 4.0, 0.0)
 	ram_cd -= delta
 	block_text_t -= delta
-	var d = main.dino
+	var d = main.target_for(position)
 	var playing: bool = main.state == main.State.PLAYING
 	if stun > 0.0:
 		stun -= delta
@@ -129,7 +135,7 @@ func update(delta: float) -> void:
 
 
 func _jeep_ai(delta: float, active: bool) -> void:
-	var d = main.dino
+	var d = main.target_for(position)
 	var dx: float = d.position.x - position.x
 	var target_v := 0.0
 	if ram_cd > 0.0:
@@ -160,7 +166,7 @@ func _muzzle() -> Vector2:
 
 
 func _aim_and_fire(delta: float, can_fire: bool) -> void:
-	var d = main.dino
+	var d = main.target_for(position)
 	var target: Vector2 = d.position + Vector2(d.vel.x * 0.25, -70.0)
 	var from := _muzzle()
 	var flight: float = clamp(abs(target.x - from.x) / 560.0, 0.6, 1.7)

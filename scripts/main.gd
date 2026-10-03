@@ -19,8 +19,9 @@ const AutoplayScript = preload("res://scripts/autoplay.gd")
 const Upgrades = preload("res://scripts/upgrades.gd")
 const Stages = preload("res://scripts/stages.gd")
 const Meta = preload("res://scripts/meta.gd")
+const CoopScript = preload("res://scripts/coop.gd")
 
-enum State { TITLE, LOBBY, SHOP, PLAYING, UPGRADE, STAGE_CLEAR, GAMEOVER }
+enum State { TITLE, LOBBY, SHOP, PLAYING, UPGRADE, STAGE_CLEAR, GAMEOVER, MULTI, JOIN, ROOM }
 
 const AIR_KINDS := ["heli", "drone", "bomber"]
 
@@ -38,7 +39,11 @@ var menu: Node2D
 var touch: Node2D
 var sfx: Node
 var autoplay: Node
-var dino: Node2D
+var dino: Node2D       # 내 공룡
+var dinos: Array = []  # 같이 하기: 모든 공룡 (내 공룡 포함)
+var mode := "solo"     # solo / host / guest
+var coop
+var actor = null       # 지금 피해를 주는 공룡 (포효 게이지/흡혈 보상 대상)
 var tanks: Array = []   # 지상 적 (지상 보스 포함)
 var helis: Array = []   # 공중 적 (공중 보스 포함)
 var shells: Array = []
@@ -117,6 +122,10 @@ func _ready() -> void:
 	layer.add_child(touch)
 	sfx = SfxScript.new()
 	add_child(sfx)
+	coop = CoopScript.new()
+	coop.main = self
+	add_child(coop)
+	sfx.recorder = func(n, v, pt): coop.rec(["sfx", n, v, pt])
 	_update_view()
 	get_viewport().size_changed.connect(_update_view)
 	if ap_args != null:
@@ -177,6 +186,10 @@ func is_portrait() -> bool:
 
 
 func _spawn_dino(x: float) -> void:
+	for d in dinos:
+		if is_instance_valid(d) and d != dino:
+			d.queue_free()
+	dinos.clear()
 	if dino:
 		dino.queue_free()
 	dino = DinoScript.new()
@@ -186,6 +199,30 @@ func _spawn_dino(x: float) -> void:
 	if autoplay and autoplay.god:
 		dino.god = true
 	world.add_child(dino)
+	dinos.append(dino)
+	if mode != "solo":
+		coop.spawn_remote_dinos()
+
+
+## 가장 가까운 살아있는 공룡 (적들이 노리는 대상). 모두 쓰러졌으면 내 공룡.
+func target_for(p: Vector2):
+	var best = null
+	var bd := INF
+	for d in dinos:
+		if d.dead:
+			continue
+		var dd: float = abs(d.position.x - p.x)
+		if dd < bd:
+			bd = dd
+			best = d
+	return best if best else dino
+
+
+func any_alive() -> bool:
+	for d in dinos:
+		if not d.dead:
+			return true
+	return false
 
 
 func _clear_world() -> void:
@@ -209,6 +246,11 @@ func goto_lobby() -> void:
 	_spawn_dino(170.0)
 	menu.open()
 	dlog("lobby: gold=%d unlocked=%d" % [gold, unlocked])
+
+
+func set_state(s: State) -> void:
+	state = s
+	menu.open()
 
 
 func open_shop() -> void:
@@ -308,10 +350,15 @@ func _process(delta: float) -> void:
 		menu.queue_redraw()
 		return
 	bg.update(delta)
+	if mode == "host":
+		coop.host_update(delta)
+	elif mode == "guest":
+		coop.guest_update(delta)
 	if state == State.UPGRADE:
 		upgrade_t += delta
 	else:
-		dino.update(delta)
+		for d in dinos:
+			d.update(delta)
 		for t in tanks:
 			t.update(delta)
 		for h in helis:
@@ -319,7 +366,9 @@ func _process(delta: float) -> void:
 		for s in shells:
 			s.update(delta)
 		hazards.update(delta)
-	if state == State.PLAYING:
+	if state == State.PLAYING and mode == "guest":
+		_guest_local_rules(delta)
+	elif state == State.PLAYING:
 		_collisions()
 		if stage_clear_t > 0.0:
 			stage_clear_t -= delta
@@ -332,7 +381,11 @@ func _process(delta: float) -> void:
 			var can_revive: bool = meta.get("revive", 0) > 0 and not revive_used
 			if can_revive and gameover_t > 1.2:
 				_revive()
-			elif not can_revive and gameover_t > 1.8:
+			elif not can_revive and gameover_t > 1.8 and not any_alive():
+				_game_over()
+		elif mode == "host" and not any_alive():
+			gameover_t += delta
+			if gameover_t > 2.5:
 				_game_over()
 	elif state == State.GAMEOVER or state == State.STAGE_CLEAR:
 		gameover_t += delta
@@ -351,13 +404,23 @@ func _process(delta: float) -> void:
 	touch.queue_redraw()
 
 
+## 참가자: 내 공룡의 부활(불사조 심장)만 직접 처리한다. 나머지 규칙은 방장이 판정.
+func _guest_local_rules(delta: float) -> void:
+	if dino.dead:
+		gameover_t += delta
+		if meta.get("revive", 0) > 0 and not revive_used and gameover_t > 1.2:
+			_revive()
+	else:
+		gameover_t = 0.0
+
+
 func _alive_enemies() -> int:
 	return tanks.size() + helis.size() - (1 if boss else 0)
 
 
 func _waves(delta: float) -> void:
 	if upgrade_pending:
-		if dino.dead:
+		if not any_alive():
 			upgrade_pending = false
 			return
 		upgrade_wait -= delta
@@ -380,10 +443,18 @@ func _waves(delta: float) -> void:
 			_spawn_enemy(Stages.pick(stage, rng))
 			to_spawn -= 1
 			spawn_timer = Stages.spawn_interval(stage)
-	elif wave < Stages.WAVES_PER_STAGE and tanks.is_empty() and helis.is_empty() and not dino.dead:
+	elif wave < Stages.WAVES_PER_STAGE and tanks.is_empty() and helis.is_empty() and any_alive():
 		upgrade_pending = true
 		upgrade_wait = 1.6
-		dino.heal(25)
+		for d in dinos:
+			if d.dead and mode == "host":
+				if d.is_remote:
+					coop.send_rpc(d.net_id, {"k": "revive"})
+				else:
+					d.revive()
+					d.hp = d.max_hp * 0.5
+			else:
+				d.heal(25)
 		show_banner("웨이브 클리어!  체력 +25")
 		sfx.play("reflect", -6.0, 0.7)
 
@@ -425,6 +496,7 @@ func _spawn_enemy(kind: String) -> void:
 	t.position = Vector2(-t.half_w - 40.0 if from_left else view.x + t.half_w + 40.0, ground_y)
 	world.add_child(t)
 	tanks.append(t)
+	coop.tag(t, "tank")
 
 
 func spawn_air(kind: String, pos: Vector2) -> void:
@@ -440,6 +512,7 @@ func spawn_air(kind: String, pos: Vector2) -> void:
 	a.position = pos
 	world.add_child(a)
 	helis.append(a)
+	coop.tag(a, kind)
 
 
 func _spawn_boss() -> void:
@@ -450,6 +523,7 @@ func _spawn_boss() -> void:
 	var x: float = view.x + b.half_w + 60.0 if right else -b.half_w - 60.0
 	b.position = Vector2(x, ground_y - 400.0 if b.is_air else ground_y)
 	world.add_child(b)
+	coop.tag(b, "boss")
 	if b.is_air:
 		helis.append(b)
 	else:
@@ -464,6 +538,13 @@ func _spawn_boss() -> void:
 # ------------------------------------------------------------------ 강화 카드
 
 func _open_upgrade() -> void:
+	if mode == "host":
+		coop.begin_upgrade()
+	open_upgrade_local()
+
+
+func open_upgrade_local() -> void:
+	hud.waiting_others = false
 	upgrade_choices = Upgrades.roll(dino.levels, 3 + int(meta.get("luck", 0)), rng)
 	if upgrade_choices.is_empty():
 		next_wave_t = 1.0
@@ -524,7 +605,7 @@ func _upgrade_input(event: InputEvent) -> void:
 
 
 func choose_upgrade(i: int) -> void:
-	if state != State.UPGRADE or i < 0 or i >= upgrade_choices.size():
+	if state != State.UPGRADE or i < 0 or i >= upgrade_choices.size() or hud.waiting_others:
 		return
 	var u: Dictionary = upgrade_choices[i]
 	dino.apply_upgrade(u.id)
@@ -532,6 +613,10 @@ func choose_upgrade(i: int) -> void:
 	fx.text(dino.position + Vector2(0, -210), "%s Lv%d" % [u.name, dino.lv(u.id)], u.col)
 	fx.ring(dino.position + Vector2(0, -90), 220.0, u.col)
 	sfx.play("roar", -6.0, 1.3)
+	if mode != "solo":
+		coop.on_local_picked()
+		hud.waiting_others = true  # 다른 사람이 다 고를 때까지 대기
+		return
 	state = State.PLAYING
 	next_wave_t = 1.4
 
@@ -539,22 +624,24 @@ func choose_upgrade(i: int) -> void:
 # ------------------------------------------------------------------ 충돌
 
 func _collisions() -> void:
-	if not dino.dead and dino.stagger_t <= 0.0:
-		var dr: Rect2 = dino.get_rect()
+	for dn in dinos:
+		if dn.dead or dn.stagger_t > 0.0:
+			continue
+		var dr: Rect2 = dn.get_rect()
 		for t in tanks:
 			if t.dead:
 				continue
 			var tr: Rect2 = t.get_rect()
 			if not dr.intersects(tr):
 				continue
-			if dino.vel.y > 0.0 and dino.prev_y <= tr.position.y + 14.0:
-				_stomp(t)
-			else:
-				var s: float = sign(t.position.x - dino.position.x)
+			if dn.vel.y > 0.0 and dn.prev_y <= tr.position.y + 14.0:
+				_stomp(t, dn)
+			elif not dn.is_remote:
+				var s: float = sign(t.position.x - dn.position.x)
 				if s == 0.0:
 					s = 1.0
-				dino.position.x = t.position.x - s * (t.half_w + dino.HALF_W)
-				dino.vel.x = 0.0
+				dn.position.x = t.position.x - s * (t.half_w + dn.HALF_W)
+				dn.vel.x = 0.0
 				if t != boss:
 					t.knock = s * 60.0
 	# 지상 적끼리 겹침 방지 (보스는 밀리지 않는다)
@@ -582,12 +669,14 @@ func _shell_collisions() -> void:
 				for e in arr:
 					if not e.dead and e.get_rect().grow(8).has_point(s.position):
 						var m := 3.0 if arr == tanks else 4.0
-						e.hit(s.damage * m * dino.reflect_mult(), sign(s.vel.x), "reflect")
+						actor = s.get_meta("owner") if s.has_meta("owner") else dino
+						var rm: float = s.get_meta("rmult") if s.has_meta("rmult") else dino.reflect_mult()
+						e.hit(s.damage * m * rm, sign(s.vel.x), "reflect")
 						explode_shell(s)
 						break
 				if s.dead:
 					break
-		elif not dino.dead and dino.get_rect().grow(-8).has_point(s.position):
+		elif _shell_hits_dino(s):
 			explode_shell(s)
 			continue
 		if s.dead:
@@ -599,28 +688,51 @@ func _shell_collisions() -> void:
 			s.dead = true
 
 
+func _shell_hits_dino(s) -> bool:
+	for dn in dinos:
+		if not dn.dead and dn.get_rect().grow(-8).has_point(s.position):
+			return true
+	return false
+
+
 func explode_shell(s) -> void:
 	s.dead = true
 	var bullet: bool = s.style == ShellScript.BULLET
 	fx.explosion(s.position, 0.25 if bullet else 0.55)
 	sfx.play("small_boom", -12.0 if bullet else -5.0)
 	add_shake(1.0 if bullet else 4.0)
-	if not s.reflected and not dino.dead:
-		var c: Vector2 = dino.position + Vector2(0, -70)
-		if c.distance_to(s.position) < (70.0 if bullet else 105.0):
-			dino.hurt(s.damage)
+	if not s.reflected:
+		for dn in dinos:
+			if dn.dead:
+				continue
+			var c: Vector2 = dn.position + Vector2(0, -70)
+			if c.distance_to(s.position) < (70.0 if bullet else 105.0):
+				dn.hurt(s.damage)
 
 
-func _stomp(t) -> void:
+func _stomp(t, who = null) -> void:
+	if who == null:
+		who = dino
+	var dino_bak = dino
+	dino = who
+	actor = who
+	if who.is_remote:
+		coop.send_rpc(who.net_id, {"k": "bounce", "v": t.get_rect().position.y})
 	dino.vel.y = -880.0
 	dino.position.y = t.get_rect().position.y
+	_stomp_body(t)
+	dino = dino_bak
+
+
+func _stomp_body(t) -> void:
 	var cd = t.get("stomp_cd")
 	if cd != null and cd > 0.0:
 		return  # 보스: 연속 밟기 방지 (튕기기만 한다)
 	if cd != null:
 		t.stomp_cd = 0.6
 	dlog("stomp")
-	t.hit(dino.stomp_damage(), dino.facing, "stomp")
+	var sd: float = dino.stomp_damage() if not dino.is_remote else 45.0 * (1.0 + 0.5 * 0)
+	t.hit(sd, dino.facing, "stomp")
 	t.stun = max(t.stun, 0.8)
 	fx.dust(Vector2(dino.position.x, dino.position.y), 1.2)
 	fx.text(dino.position + Vector2(0, -170), "밟기!", Color(1, 0.9, 0.3))
@@ -629,16 +741,29 @@ func _stomp(t) -> void:
 	dino.add_roar(10.0)
 
 
-func on_bite(rect: Rect2) -> void:
+func on_bite(rect: Rect2, who = null, dmg := -1.0) -> void:
+	if mode == "guest":
+		coop.send_bite(rect, dino.bite_damage(), dino.facing)
+		return
+	if who == null:
+		who = dino
+	var dino_bak = dino
+	dino = who
+	actor = who
+	_bite_body(rect, dmg if dmg > 0.0 else who.bite_damage())
+	dino = dino_bak
+
+
+func _bite_body(rect: Rect2, bdmg: float) -> void:
 	var hit_any := false
 	for t in tanks:
 		if not t.dead and rect.intersects(t.get_rect()):
-			t.hit(dino.bite_damage(), dino.facing, "bite")
+			t.hit(bdmg, dino.facing, "bite")
 			hit_any = true
 			fx.sparks(Vector2(clamp(t.position.x, rect.position.x, rect.end.x), t.get_rect().position.y + 20.0))
 	for h in helis:
 		if not h.dead and rect.intersects(h.get_rect()):
-			h.hit(dino.bite_damage() * 1.25, dino.facing, "bite")
+			h.hit(bdmg * 1.25, dino.facing, "bite")
 			hit_any = true
 			fx.sparks(h.position)
 	for s in shells:
@@ -652,6 +777,8 @@ func on_bite(rect: Rect2) -> void:
 
 func _reflect(s) -> void:
 	s.reflected = true
+	s.set_meta("owner", dino)
+	s.set_meta("rmult", dino.reflect_mult() if not dino.is_remote else 1.0)
 	s.grav = 1.0
 	var target = null
 	var best_d := INF
@@ -676,7 +803,20 @@ func _reflect(s) -> void:
 	dino.add_roar(6.0)
 
 
-func do_roar() -> void:
+func do_roar(who = null, dmg := -1.0) -> void:
+	if mode == "guest":
+		coop.send_roar(dino.roar_damage())
+		return
+	if who == null:
+		who = dino
+	var dino_bak = dino
+	dino = who
+	actor = who
+	_roar_body(dmg if dmg > 0.0 else who.roar_damage())
+	dino = dino_bak
+
+
+func _roar_body(rdmg: float) -> void:
 	dlog("ROAR")
 	var c: Vector2 = dino.position + Vector2(dino.facing * 60.0, -110.0)
 	fx.ring(c, 900.0, Color(1, 0.8, 0.3, 0.9))
@@ -687,10 +827,10 @@ func do_roar() -> void:
 	for t in tanks:
 		if not t.dead:
 			t.stun = 1.8
-			t.hit(dino.roar_damage(), sign(t.position.x - dino.position.x), "roar")
+			t.hit(rdmg, sign(t.position.x - dino.position.x), "roar")
 	for h in helis:
 		if not h.dead:
-			h.hit(dino.roar_damage() * 1.3, 0.0, "roar")
+			h.hit(rdmg * 1.3, 0.0, "roar")
 	for s in shells:
 		if not s.dead and not s.reflected:
 			s.dead = true
@@ -706,6 +846,7 @@ func add_shell(pos: Vector2, vel: Vector2, damage: float, big := false):
 	s.big = big
 	world.add_child(s)
 	shells.append(s)
+	coop.tag(s, "shell")
 	return s
 
 
@@ -735,9 +876,10 @@ func on_enemy_destroyed(pos: Vector2, base_points: int, size: float, gold_amt :=
 	_gain_gold(gold_amt, pos)
 	sfx.play("boom")
 	add_shake(13.0 * size)
+	var who = actor if actor != null and is_instance_valid(actor) else dino
 	if src != "roar":
-		dino.add_roar(14.0)
-	dino.on_kill()
+		who.add_roar(14.0)
+	who.on_kill()
 
 
 func on_boss_defeated(b) -> void:
@@ -763,11 +905,16 @@ func on_boss_defeated(b) -> void:
 	hazards.clear()
 	to_spawn = 0
 	boss = null
-	dino.invuln = 6.0
+	for dn in dinos:
+		if dn.is_remote:
+			coop.send_rpc(dn.net_id, {"k": "invuln", "v": 6.0})
+		else:
+			dn.invuln = 6.0
 	stage_clear_t = 2.8
 
 
 func add_shake(amount: float) -> void:
+	coop.rec(["shake", amount])
 	shake = min(max(shake, amount), 26.0)
 
 
@@ -796,6 +943,8 @@ func _revive() -> void:
 
 
 func _stage_clear() -> void:
+	if mode == "host":
+		coop.send_end(true)
 	state = State.STAGE_CLEAR
 	gameover_t = 0.0
 	var bonus := int(round(Stages.clear_gold(stage) * Meta.gold_mult(meta)))
@@ -812,6 +961,8 @@ func _stage_clear() -> void:
 
 
 func _game_over() -> void:
+	if mode == "host":
+		coop.send_end(false)
 	state = State.GAMEOVER
 	gameover_t = 0.0
 	gold += run_gold

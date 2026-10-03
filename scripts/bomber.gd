@@ -34,6 +34,12 @@ func get_rect() -> Rect2:
 
 
 func update(delta: float) -> void:
+	if has_meta("puppet"):
+		# 같이 하기 참가자 화면: 방장이 보낸 위치로 따라가기만 한다
+		position = position.lerp(get_meta("net_pos", position), min(1.0, delta * 12.0))
+		t += delta
+		queue_redraw()
+		return
 	t += delta
 	flash = max(flash - delta, 0.0)
 	if warn_t > 0.0:
@@ -42,7 +48,7 @@ func update(delta: float) -> void:
 		return
 	position.x += dir * speed * delta
 	drop_cd -= delta
-	var d = main.dino
+	var d = main.target_for(position)
 	var over_screen: bool = position.x > 0.0 and position.x < main.view.x
 	if over_screen and drop_cd <= 0.0 and abs(d.position.x - position.x) < 380.0 and main.state == main.State.PLAYING:
 		drop_cd = 0.3

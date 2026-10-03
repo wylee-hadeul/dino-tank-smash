@@ -34,6 +34,11 @@ func threat_for(px: float) -> String:
 
 
 func update(delta: float) -> void:
+	if main.mode == "guest":
+		for h in items:
+			h.t += delta  # 표시만 (판정은 방장)
+		queue_redraw()
+		return
 	var d = main.dino
 	for i in range(items.size() - 1, -1, -1):
 		var h: Dictionary = items[i]
@@ -42,18 +47,20 @@ func update(delta: float) -> void:
 			h.x += h.dir * h.speed * delta
 			if fmod(h.t, 0.05) < delta:
 				main.fx.dust(Vector2(h.x, main.ground_y), 0.5)
-			if not h.hit and not d.dead and abs(d.position.x - h.x) < 45.0 and d.position.y > main.ground_y - 40.0:
-				h.hit = true
-				d.hurt(h.dmg)
-				d.knockback(Vector2(h.dir * 300.0, -600.0), 0.35)
+			for dd in main.dinos:
+				if not h.hit and not dd.dead and abs(dd.position.x - h.x) < 45.0 and dd.position.y > main.ground_y - 40.0:
+					h.hit = true
+					dd.hurt(h.dmg)
+					dd.knockback(Vector2(h.dir * 300.0, -600.0), 0.35)
 			if h.x < -100.0 or h.x > main.view.x + 100.0:
 				items.remove_at(i)
 		elif h.k == "laser":
-			if h.t >= h.warn and not h.hit and not d.dead:
+			if h.t >= h.warn and not h.hit:
 				var beam := Rect2(h.x0, h.y - 16.0, h.x1 - h.x0, 32.0)
-				if beam.intersects(d.get_rect()):
-					h.hit = true
-					d.hurt(h.dmg)
+				for dd in main.dinos:
+					if not dd.dead and beam.intersects(dd.get_rect()):
+						h.hit = true
+						dd.hurt(h.dmg)
 			if h.t >= h.warn + h.active:
 				items.remove_at(i)
 	queue_redraw()

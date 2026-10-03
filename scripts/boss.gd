@@ -96,6 +96,12 @@ func _set_state(s: String) -> void:
 
 
 func update(delta: float) -> void:
+	if has_meta("puppet"):
+		# 같이 하기 참가자 화면: 방장이 보낸 위치로 따라가기만 한다
+		position = position.lerp(get_meta("net_pos", position), min(1.0, delta * 12.0))
+		t += delta
+		queue_redraw()
+		return
 	t += delta
 	flash = max(flash - delta, 0.0)
 	stomp_cd -= delta
@@ -123,7 +129,7 @@ func update(delta: float) -> void:
 
 
 func _face_dino() -> void:
-	dir = 1.0 if main.dino.position.x > position.x else -1.0
+	dir = 1.0 if main.target_for(position).position.x > position.x else -1.0
 
 
 func _next_attack(list: Array) -> void:
@@ -133,7 +139,7 @@ func _next_attack(list: Array) -> void:
 
 
 func _keep_distance(delta: float, want: float, spd: float) -> void:
-	var dx: float = main.dino.position.x - position.x
+	var dx: float = main.target_for(position).position.x - position.x
 	var v := 0.0
 	if abs(dx) > want + 40.0:
 		v = sign(dx) * spd
@@ -145,13 +151,13 @@ func _keep_distance(delta: float, want: float, spd: float) -> void:
 
 
 func _can_attack() -> bool:
-	return main.state == main.State.PLAYING and not main.dino.dead
+	return main.state == main.State.PLAYING and main.any_alive()
 
 
 # ------------------------------------------------------------------ 기가 탱크
 
 func _giga(delta: float) -> void:
-	var d = main.dino
+	var d = main.target_for(position)
 	position.y = main.ground_y
 	match state:
 		"enter":
@@ -234,7 +240,7 @@ func _giga_muzzle() -> Vector2:
 # ------------------------------------------------------------------ 하늘 요새
 
 func _fortress(delta: float) -> void:
-	var d = main.dino
+	var d = main.target_for(position)
 	match state:
 		"enter":
 			position.x = move_toward(position.x, enter_x, 200.0 * delta)
@@ -302,7 +308,7 @@ func _fortress(delta: float) -> void:
 # ------------------------------------------------------------------ 아이언 렉스
 
 func _rex(delta: float) -> void:
-	var d = main.dino
+	var d = main.target_for(position)
 	match state:
 		"enter":
 			position.y = main.ground_y
