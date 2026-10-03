@@ -22,7 +22,7 @@ Godot 4.6로 만든 공룡이 탱크를 부수는 2D 액션 게임. 모바일 �
 ```bash
 godot --path .                                   # 실행
 godot --path . -- --autoplay --shots=/tmp/shots --duration=60   # 오토플레이 봇 + 스크린샷/로그
-godot --headless --path . --export-release "Web" docs/index.html # 웹 빌드 (GitHub Pages: main /docs)
+./tools/export_web.sh   # 웹 빌드 + 캐시 무효화 (GitHub Pages: main /docs)
 ```
 웹 빌드에서도 `index.html?autoplay` 로 봇 플레이 가능 (`&manualpick` 을 붙이면 강화 카드는 직접 선택).
 
