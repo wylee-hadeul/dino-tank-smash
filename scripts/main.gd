@@ -55,6 +55,7 @@ var upgrade_t := 0.0
 
 
 func _ready() -> void:
+	ThemeDB.fallback_font = load("res://fonts/Jua-Regular.ttf")  # 한글 폰트
 	rng.randomize()
 	_setup_input()
 	_load_save()
@@ -245,6 +246,9 @@ func _process(delta: float) -> void:
 
 func _waves(delta: float) -> void:
 	if upgrade_pending:
+		if dino.dead:
+			upgrade_pending = false
+			return
 		upgrade_wait -= delta
 		if upgrade_wait <= 0.0:
 			upgrade_pending = false
@@ -266,7 +270,7 @@ func _waves(delta: float) -> void:
 		upgrade_pending = true
 		upgrade_wait = 1.6
 		dino.heal(25)
-		show_banner("WAVE CLEAR!  +25 HP")
+		show_banner("웨이브 클리어!  체력 +25")
 		sfx.play("reflect", -6.0, 0.7)
 
 
@@ -350,7 +354,7 @@ func _start_wave(n: int) -> void:
 	to_spawn = 3 + n
 	dlog("wave %d start (enemies=%d)" % [n, 3 + n])
 	spawn_timer = 0.4
-	show_banner("WAVE %d" % n)
+	show_banner("웨이브 %d" % n)
 
 
 func show_banner(text: String) -> void:
@@ -464,7 +468,7 @@ func _stomp(t) -> void:
 	t.hit(dino.stomp_damage(), dino.facing)
 	t.stun = max(t.stun, 0.8)
 	fx.dust(Vector2(dino.position.x, dino.position.y), 1.2)
-	fx.text(dino.position + Vector2(0, -170), "STOMP!", Color(1, 0.9, 0.3))
+	fx.text(dino.position + Vector2(0, -170), "밟기!", Color(1, 0.9, 0.3))
 	sfx.play("stomp")
 	add_shake(9.0)
 	dino.add_roar(10.0)
@@ -509,7 +513,7 @@ func _reflect(s) -> void:
 	else:
 		s.vel = Vector2(-s.vel.x * 1.3, -500.0)
 	score += 25
-	fx.text(s.position + Vector2(0, -30), "REFLECT!", Color(0.5, 1, 1))
+	fx.text(s.position + Vector2(0, -30), "반사!", Color(0.5, 1, 1))
 	sfx.play("reflect")
 	dino.add_roar(6.0)
 
@@ -562,7 +566,7 @@ func on_enemy_destroyed(pos: Vector2, base_points: int, size: float) -> void:
 	fx.explosion(pos, size)
 	fx.text(pos + Vector2(0, -90), "+%d" % pts, Color(1, 1, 0.4))
 	if combo >= 2:
-		fx.text(pos + Vector2(0, -130), "COMBO x%d" % combo, Color(1, 0.5, 0.2))
+		fx.text(pos + Vector2(0, -130), "콤보 x%d" % combo, Color(1, 0.5, 0.2))
 	sfx.play("boom")
 	add_shake(13.0 * size)
 	dino.add_roar(14.0)

@@ -16,6 +16,7 @@ var holding := {}
 var frames := 0
 var fps_acc := 0.0
 var restart_t := 0.0
+var suicide_at := -1.0  # 게임오버 화면 검수용
 var manual_pick := false  # 강화 카드는 사람이 직접 고른다 (터치 테스트용)
 
 
@@ -26,6 +27,8 @@ func configure(args: PackedStringArray) -> void:
 			shots_dir = a.substr(8)
 		elif a.begins_with("--duration="):
 			duration = float(a.substr(11))
+		elif a.begins_with("--suicide="):
+			suicide_at = float(a.substr(10))
 		elif a == "--manualpick":
 			manual_pick = true
 		elif a.begins_with("--shot-every="):
@@ -61,6 +64,10 @@ func _process(delta: float) -> void:
 				_screenshot()
 			main.choose_upgrade(randi() % main.upgrade_choices.size())
 	elif main.state == main.State.PLAYING:
+		if suicide_at > 0.0 and elapsed >= suicide_at:
+			suicide_at = -1.0
+			main.dino.invuln = 0.0
+			main.dino.hurt(99999.0)
 		_think()
 
 	if elapsed >= next_log:

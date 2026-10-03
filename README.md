@@ -1,4 +1,4 @@
-# 🦖 Dino Smash vs Tanks
+# 🦖 공룡 대난동 vs 탱크 군단
 
 Godot 4.6로 만든 공룡이 탱크를 부수는 2D 액션 게임. 모바일 웹(가로 모드)과 데스크톱 모두 지원.
 
@@ -25,3 +25,6 @@ godot --path . -- --autoplay --shots=/tmp/shots --duration=60   # 오토플레�
 godot --headless --path . --export-release "Web" docs/index.html # 웹 빌드 (GitHub Pages: main /docs)
 ```
 웹 빌드에서도 `index.html?autoplay` 로 봇 플레이 가능 (`&manualpick` 을 붙이면 강화 카드는 직접 선택).
+
+## 폰트
+게임 내 한글 폰트: [Jua](https://fonts.google.com/specimen/Jua) (SIL Open Font License 1.1, `fonts/OFL.txt`)

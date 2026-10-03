@@ -138,7 +138,7 @@ func update(delta: float) -> void:
 		on_ground = true
 	else:
 		on_ground = false
-	position.x = clamp(position.x, 125.0, main.view.x - 125.0)  # 머리/꼬리가 잘리지 않게
+	position.x = clamp(position.x, 145.0, main.view.x - 145.0)  # 머리/꼬리가 잘리지 않게
 	walk_phase += abs(vel.x) * delta * 0.028
 	queue_redraw()
 
@@ -176,7 +176,7 @@ func add_roar(amount: float) -> void:
 	var was_full := roar_meter >= 100.0
 	roar_meter = min(roar_meter + amount * (1.0 + 0.4 * lv("roar")), 100.0)
 	if not was_full and roar_meter >= 100.0:
-		main.fx.text(position + Vector2(0, -200), "ROAR READY!", Color(1, 0.6, 0.1))
+		main.fx.text(position + Vector2(0, -200), "포효 준비!", Color(1, 0.6, 0.1))
 
 
 # ------------------------------------------------------------------ 드로잉
@@ -205,6 +205,8 @@ func _ellipse(center: Vector2, r: Vector2, rot := 0.0, seg := 24) -> PackedVecto
 
 func _leg(hip: Vector2, phase: float, col: Color) -> void:
 	var swing := sin(phase) * 0.55 if on_ground else -0.35
+	if dead:
+		swing = sin(anim_t * 14.0 + phase) * 0.5
 	var lift: float = max(0.0, cos(phase)) * 10.0 if on_ground and abs(vel.x) > 20.0 else 0.0
 	var knee := hip + Vector2(sin(swing) * 30.0 + 12.0, 30.0 - lift * 0.5)
 	var foot := Vector2(hip.x + sin(swing) * 38.0, -lift)
@@ -228,12 +230,15 @@ func _draw() -> void:
 
 	var rot := 0.0
 	if dead:
-		rot = -min(death_t * 4.0, PI * 0.5)
+		rot = PI * min(death_t * 2.5, 1.0)  # 몸 중심 기준으로 뒤집힌다
 	var squash := 1.0 - land_squash * 0.12
 	var shake_off := Vector2.ZERO
 	if roar_t > 0.0:
 		shake_off = Vector2(randf_range(-3, 3), randf_range(-2, 2))
-	draw_set_transform(shake_off, rot * facing, Vector2(facing * (2.0 - squash), squash))
+	var pivot := Vector2(0, -90)
+	var body_xf := Transform2D(0.0, shake_off + pivot) * Transform2D(rot * facing, Vector2.ZERO) \
+		* Transform2D(0.0, -pivot) * Transform2D(0.0, Vector2(facing * (2.0 - squash), squash), 0.0, Vector2.ZERO)
+	draw_set_transform_matrix(body_xf)
 
 	var breathe := sin(anim_t * 3.0) * 2.0
 	var sway := sin(anim_t * 4.0) * 7.0
@@ -267,7 +272,6 @@ func _draw() -> void:
 	if dead:
 		jaw = 0.45
 	var hinge := Vector2(52 + lunge, -142)
-	draw_set_transform(shake_off, rot * facing, Vector2(facing * (2.0 - squash), squash))
 	var head_xf := Transform2D(tilt, hinge)
 	# 입 안
 	var mouth := PackedVector2Array([Vector2(0, 0), Vector2(66, 2), Vector2(66, 2).rotated(jaw) + Vector2(0, 4), Vector2(0, 6)])

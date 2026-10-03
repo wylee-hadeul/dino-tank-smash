@@ -135,5 +135,6 @@ func _draw() -> void:
 				var sz := int(p.size * (1.0 + 0.25 * max(0.0, 1.0 - k * 6.0)))
 				var w := font.get_string_size(p.txt, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
 				var pos: Vector2 = p.pos - Vector2(w * 0.5, 0)
+				pos.x = clamp(pos.x, 8.0, main.view.x - w - 8.0)  # 화면 밖으로 잘리지 않게
 				draw_string_outline(font, pos, p.txt, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, 8, Color(0, 0, 0, col.a))
 				draw_string(font, pos, p.txt, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, col)

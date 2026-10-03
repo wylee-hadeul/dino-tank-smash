@@ -106,8 +106,8 @@ func _draw() -> void:
 			"right":
 				draw_colored_polygon(PackedVector2Array([c + Vector2(26, 0), c + Vector2(-16, -26), c + Vector2(-16, 26)]), icon_col)
 			_:
-				var label: String = a.to_upper()
-				var sz := 26 if a != "bite" else 30
+				var label: String = {"jump": "점프", "bite": "물기", "roar": "포효"}[a]
+				var sz := 30 if a != "bite" else 36
 				var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
 				draw_string(font, c + Vector2(-w * 0.5, sz * 0.35), label, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, icon_col)
 		if a == "roar" and not ready:
