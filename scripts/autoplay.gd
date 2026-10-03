@@ -16,6 +16,7 @@ var holding := {}
 var frames := 0
 var fps_acc := 0.0
 var restart_t := 0.0
+var manual_pick := false  # 강화 카드는 사람이 직접 고른다 (터치 테스트용)
 
 
 func configure(args: PackedStringArray) -> void:
@@ -25,6 +26,8 @@ func configure(args: PackedStringArray) -> void:
 			shots_dir = a.substr(8)
 		elif a.begins_with("--duration="):
 			duration = float(a.substr(11))
+		elif a == "--manualpick":
+			manual_pick = true
 		elif a.begins_with("--shot-every="):
 			shot_every = float(a.substr(13))
 	if shots_dir != "":
@@ -51,6 +54,12 @@ func _process(delta: float) -> void:
 			restart_t = 0.0
 			main.dlog("auto-restart")
 			main.start_game()
+	elif main.state == main.State.UPGRADE:
+		_move(0.0)
+		if main.upgrade_t > 1.2 and not manual_pick:
+			if shots_dir != "":
+				_screenshot()
+			main.choose_upgrade(randi() % main.upgrade_choices.size())
 	elif main.state == main.State.PLAYING:
 		_think()
 

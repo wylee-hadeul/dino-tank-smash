@@ -33,6 +33,43 @@ var land_squash := 0.0
 var dead := false
 var death_t := 0.0
 var anim_t := 0.0
+var levels := {}  # 강화 id -> 레벨
+
+
+func lv(id: String) -> int:
+	return levels.get(id, 0)
+
+
+func apply_upgrade(id: String) -> void:
+	levels[id] = lv(id) + 1
+	if id == "hp":
+		max_hp = 100.0 + 25.0 * lv("hp")
+		hp = max_hp
+
+
+func speed() -> float:
+	return SPEED * (1.0 + 0.15 * lv("speed"))
+
+
+func bite_damage() -> float:
+	return 28.0 * (1.0 + 0.35 * lv("bite"))
+
+
+func stomp_damage() -> float:
+	return 45.0 * (1.0 + 0.5 * lv("jump"))
+
+
+func roar_damage() -> float:
+	return 55.0 * (1.0 + 0.3 * lv("roar"))
+
+
+func reflect_mult() -> float:
+	return 1.0 + 0.6 * lv("reflect")
+
+
+func on_kill() -> void:
+	if lv("vamp") > 0 and not dead:
+		heal(4.0 * lv("vamp"))
 
 
 func get_rect() -> Rect2:
@@ -40,9 +77,11 @@ func get_rect() -> Rect2:
 
 
 func bite_rect() -> Rect2:
+	var reach := 165.0 * (1.0 + 0.25 * lv("reach"))
+	var top := 200.0 + 20.0 * lv("reach")
 	if facing > 0.0:
-		return Rect2(position.x + 15.0, position.y - 200.0, 165.0, 185.0)
-	return Rect2(position.x - 180.0, position.y - 200.0, 165.0, 185.0)
+		return Rect2(position.x + 15.0, position.y - top, reach, top - 15.0)
+	return Rect2(position.x - 15.0 - reach, position.y - top, reach, top - 15.0)
 
 
 func update(delta: float) -> void:
@@ -64,16 +103,18 @@ func update(delta: float) -> void:
 		return
 
 	var playing: bool = main.state == main.State.PLAYING
+	if playing and lv("regen") > 0:
+		heal(1.5 * lv("regen") * delta)
 	var dir := 0.0
 	if playing and roar_t <= 0.0:
 		dir = Input.get_axis("left", "right")
-	vel.x = move_toward(vel.x, dir * SPEED, 3200.0 * delta)
+	vel.x = move_toward(vel.x, dir * speed(), 3200.0 * delta)
 	if dir != 0.0:
 		facing = sign(dir)
 
 	if playing:
 		if on_ground and Input.is_action_just_pressed("jump"):
-			vel.y = JUMP_V
+			vel.y = JUMP_V * (1.0 + 0.12 * lv("jump"))
 			on_ground = false
 			main.sfx.play("jump", -8.0)
 		if not Input.is_action_pressed("jump") and vel.y < -300.0:
@@ -103,7 +144,7 @@ func update(delta: float) -> void:
 
 
 func _bite() -> void:
-	bite_cd = BITE_CD
+	bite_cd = BITE_CD * (1.0 - 0.18 * lv("frenzy"))
 	bite_t = BITE_TIME
 	main.sfx.play("bite", -2.0)
 	main.on_bite(bite_rect())
@@ -112,6 +153,7 @@ func _bite() -> void:
 func hurt(dmg: float) -> void:
 	if dead or invuln > 0.0:
 		return
+	dmg *= 1.0 - 0.15 * lv("armor")
 	hp -= dmg
 	main.dlog("dino hurt -%.0f hp=%.0f" % [dmg, max(hp, 0.0)])
 	hurt_t = 0.25
@@ -132,7 +174,7 @@ func heal(amount: float) -> void:
 
 func add_roar(amount: float) -> void:
 	var was_full := roar_meter >= 100.0
-	roar_meter = min(roar_meter + amount, 100.0)
+	roar_meter = min(roar_meter + amount * (1.0 + 0.4 * lv("roar")), 100.0)
 	if not was_full and roar_meter >= 100.0:
 		main.fx.text(position + Vector2(0, -200), "ROAR READY!", Color(1, 0.6, 0.1))
 

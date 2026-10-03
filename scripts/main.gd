@@ -11,8 +11,9 @@ const HudScript = preload("res://scripts/hud.gd")
 const TouchScript = preload("res://scripts/touch_controls.gd")
 const SfxScript = preload("res://scripts/sfx.gd")
 const AutoplayScript = preload("res://scripts/autoplay.gd")
+const Upgrades = preload("res://scripts/upgrades.gd")
 
-enum State { TITLE, PLAYING, GAMEOVER }
+enum State { TITLE, PLAYING, UPGRADE, GAMEOVER }
 
 const SAVE_PATH := "user://save.cfg"
 
@@ -46,6 +47,11 @@ var combo_t := 0.0
 var gameover_t := 0.0
 var time := 0.0
 var rng := RandomNumberGenerator.new()
+var upgrade_pending := false
+var upgrade_wait := 0.0
+var upgrade_choices: Array = []
+var upgrade_sel := 0
+var upgrade_t := 0.0
 
 
 func _ready() -> void:
@@ -84,6 +90,8 @@ func _maybe_autoplay() -> void:
 		var q = JavaScriptBridge.eval("window.location.search", true)
 		if typeof(q) == TYPE_STRING and q.contains("autoplay"):
 			on = true
+			if q.contains("manualpick"):
+				args.append("--manualpick")
 	if not on:
 		return
 	var ap = AutoplayScript.new()
@@ -140,6 +148,9 @@ func _spawn_dino() -> void:
 func _input(event: InputEvent) -> void:
 	if state == State.PLAYING:
 		return
+	if state == State.UPGRADE:
+		_upgrade_input(event)
+		return
 	var pressed := false
 	if event is InputEventScreenTouch and event.pressed:
 		pressed = true
@@ -184,6 +195,7 @@ func start_game() -> void:
 	to_spawn = 0
 	gameover_t = 0.0
 	next_wave_t = 1.2
+	upgrade_pending = false
 	state = State.PLAYING
 	sfx.play("roar", -4.0)
 	dino.roar_t = 0.6
@@ -198,13 +210,16 @@ func _process(delta: float) -> void:
 		hud.queue_redraw()
 		return
 	bg.update(delta)
-	dino.update(delta)
-	for t in tanks:
-		t.update(delta)
-	for h in helis:
-		h.update(delta)
-	for s in shells:
-		s.update(delta)
+	if state == State.UPGRADE:
+		upgrade_t += delta
+	else:
+		dino.update(delta)
+		for t in tanks:
+			t.update(delta)
+		for h in helis:
+			h.update(delta)
+		for s in shells:
+			s.update(delta)
 	if state == State.PLAYING:
 		_collisions(delta)
 		_waves(delta)
@@ -229,6 +244,12 @@ func _process(delta: float) -> void:
 
 
 func _waves(delta: float) -> void:
+	if upgrade_pending:
+		upgrade_wait -= delta
+		if upgrade_wait <= 0.0:
+			upgrade_pending = false
+			_open_upgrade()
+		return
 	if next_wave_t > 0.0:
 		next_wave_t -= delta
 		if next_wave_t <= 0.0:
@@ -241,11 +262,87 @@ func _waves(delta: float) -> void:
 			_spawn_enemy()
 			to_spawn -= 1
 			spawn_timer = max(0.7, 2.6 - wave * 0.15)
-	elif tanks.is_empty() and helis.is_empty():
-		next_wave_t = 2.8
+	elif tanks.is_empty() and helis.is_empty() and not dino.dead:
+		upgrade_pending = true
+		upgrade_wait = 1.6
 		dino.heal(25)
 		show_banner("WAVE CLEAR!  +25 HP")
 		sfx.play("reflect", -6.0, 0.7)
+
+
+# ------------------------------------------------------------------ 강화
+
+func _open_upgrade() -> void:
+	upgrade_choices = Upgrades.roll(dino.levels, 3, rng)
+	if upgrade_choices.is_empty():
+		next_wave_t = 1.0
+		return
+	state = State.UPGRADE
+	upgrade_t = 0.0
+	upgrade_sel = 0
+	touch.release_all()
+	sfx.play("reflect", -4.0, 0.5)
+	dlog("upgrade offer: %s" % ", ".join(upgrade_choices.map(func(u): return u.id)))
+
+
+func card_rects() -> Array:
+	var n := upgrade_choices.size()
+	var w: float = min(300.0, (view.x - 80.0) / n - 30.0)
+	var h: float = min(380.0, view.y - 230.0)
+	var gap := 36.0
+	var total := n * w + (n - 1) * gap
+	var x0 := (view.x - total) * 0.5
+	var y0 := view.y * 0.5 - h * 0.5 + 50.0
+	var out: Array = []
+	for i in n:
+		out.append(Rect2(x0 + i * (w + gap), y0, w, h))
+	return out
+
+
+func _upgrade_input(event: InputEvent) -> void:
+	if upgrade_t < 0.5:  # 웨이브 끝 연타로 잘못 고르는 것 방지
+		return
+	var pos = null
+	if event is InputEventScreenTouch and event.pressed:
+		pos = event.position
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		pos = event.position
+	if pos != null:
+		var rects := card_rects()
+		for i in rects.size():
+			if rects[i].grow(10).has_point(pos):
+				choose_upgrade(i)
+				get_viewport().set_input_as_handled()
+				return
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		match event.physical_keycode:
+			KEY_1, KEY_2, KEY_3:
+				var i: int = event.physical_keycode - KEY_1
+				if i < upgrade_choices.size():
+					choose_upgrade(i)
+				return
+		if event.is_action("left"):
+			upgrade_sel = posmod(upgrade_sel - 1, upgrade_choices.size())
+			sfx.play("jump", -10.0)
+		elif event.is_action("right"):
+			upgrade_sel = posmod(upgrade_sel + 1, upgrade_choices.size())
+			sfx.play("jump", -10.0)
+		elif event.is_action("bite") or event.is_action("jump") or event.physical_keycode == KEY_ENTER:
+			choose_upgrade(upgrade_sel)
+
+
+func choose_upgrade(i: int) -> void:
+	if state != State.UPGRADE or i < 0 or i >= upgrade_choices.size():
+		return
+	var u: Dictionary = upgrade_choices[i]
+	dino.apply_upgrade(u.id)
+	dlog("upgrade chosen: %s -> Lv%d" % [u.id, dino.lv(u.id)])
+	fx.text(dino.position + Vector2(0, -210), "%s Lv%d" % [u.name, dino.lv(u.id)], u.col)
+	fx.ring(dino.position + Vector2(0, -90), 220.0, u.col)
+	sfx.play("roar", -6.0, 1.3)
+	state = State.PLAYING
+	next_wave_t = 1.4
 
 
 func _start_wave(n: int) -> void:
@@ -328,13 +425,13 @@ func _shell_collisions() -> void:
 		if s.reflected:
 			for t in tanks:
 				if not t.dead and t.get_rect().grow(6).has_point(s.position):
-					t.hit(s.damage * 3.0, sign(s.vel.x))
+					t.hit(s.damage * 3.0 * dino.reflect_mult(), sign(s.vel.x))
 					explode_shell(s)
 					break
 			if not s.dead:
 				for h in helis:
 					if not h.dead and h.get_rect().grow(10).has_point(s.position):
-						h.hit(s.damage * 4.0)
+						h.hit(s.damage * 4.0 * dino.reflect_mult())
 						explode_shell(s)
 						break
 		elif not dino.dead and dino.get_rect().grow(-8).has_point(s.position):
@@ -364,7 +461,7 @@ func _stomp(t) -> void:
 	dlog("stomp")
 	dino.vel.y = -880.0
 	dino.position.y = t.get_rect().position.y
-	t.hit(45.0, dino.facing)
+	t.hit(dino.stomp_damage(), dino.facing)
 	t.stun = max(t.stun, 0.8)
 	fx.dust(Vector2(dino.position.x, dino.position.y), 1.2)
 	fx.text(dino.position + Vector2(0, -170), "STOMP!", Color(1, 0.9, 0.3))
@@ -377,12 +474,12 @@ func on_bite(rect: Rect2) -> void:
 	var hit_any := false
 	for t in tanks:
 		if not t.dead and rect.intersects(t.get_rect()):
-			t.hit(28.0, dino.facing)
+			t.hit(dino.bite_damage(), dino.facing)
 			hit_any = true
 			fx.sparks(Vector2(clamp(t.position.x, rect.position.x, rect.end.x), t.get_rect().position.y + 20.0))
 	for h in helis:
 		if not h.dead and rect.intersects(h.get_rect()):
-			h.hit(35.0)
+			h.hit(dino.bite_damage() * 1.25)
 			hit_any = true
 			fx.sparks(h.position)
 	for s in shells:
@@ -427,10 +524,10 @@ func do_roar() -> void:
 	for t in tanks:
 		if not t.dead:
 			t.stun = 1.8
-			t.hit(55.0, sign(t.position.x - dino.position.x))
+			t.hit(dino.roar_damage(), sign(t.position.x - dino.position.x))
 	for h in helis:
 		if not h.dead:
-			h.hit(70.0)
+			h.hit(dino.roar_damage() * 1.3)
 	for s in shells:
 		if not s.dead and not s.reflected:
 			s.dead = true
@@ -469,6 +566,7 @@ func on_enemy_destroyed(pos: Vector2, base_points: int, size: float) -> void:
 	sfx.play("boom")
 	add_shake(13.0 * size)
 	dino.add_roar(14.0)
+	dino.on_kill()
 
 
 func add_shake(amount: float) -> void:
