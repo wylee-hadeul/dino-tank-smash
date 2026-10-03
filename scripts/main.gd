@@ -248,6 +248,16 @@ func goto_lobby() -> void:
 	dlog("lobby: gold=%d unlocked=%d" % [gold, unlocked])
 
 
+## 같이 하기: 기기마다 화면 비율이 달라도 모두 같은 1280x720 좌표를 쓰게 고정한다
+## (땅 높이/화면 폭이 달라 다른 사람 공룡이 땅속에 보이는 문제 방지). 혼자 하기는 화면을 꽉 채운다.
+func set_shared_view(on: bool) -> void:
+	var w := get_window()
+	var want := Window.CONTENT_SCALE_ASPECT_KEEP if on else Window.CONTENT_SCALE_ASPECT_EXPAND
+	if w.content_scale_aspect != want:
+		w.content_scale_aspect = want
+		_update_view()
+
+
 func set_state(s: State) -> void:
 	state = s
 	menu.open()

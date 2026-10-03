@@ -73,6 +73,7 @@ func create_room() -> void:
 	var code := "%04d" % (randi() % 10000)
 	if main.autoplay and main.autoplay.room_code != "":
 		code = main.autoplay.room_code
+	main.set_shared_view(true)
 	net.host(code)
 	roster = []
 	room_stage = main.unlocked
@@ -81,6 +82,7 @@ func create_room() -> void:
 
 
 func join_room(code: String) -> void:
+	main.set_shared_view(true)
 	net.join(code)
 	roster = []
 	main.dlog("join room %s" % code)
@@ -88,6 +90,7 @@ func join_room(code: String) -> void:
 
 func leave_room() -> void:
 	net.leave()
+	main.set_shared_view(false)
 	roster = []
 	if main.mode != "solo":
 		main.mode = "solo"

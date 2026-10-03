@@ -210,6 +210,7 @@ func activate(id: String) -> void:
 			main.set_state(main.State.MULTI)
 		"back_multi":
 			main.coop.net.leave()
+			main.set_shared_view(false)
 			main.set_state(main.State.MULTI)
 		"create":
 			main.coop.create_room()
