@@ -97,7 +97,7 @@ func _draw() -> void:
 		_text(Vector2(v.x * 0.5, v.y * 0.37 + bob), "vs  탱크 군단", 56, Color("ffcf4a"), HORIZONTAL_ALIGNMENT_CENTER, 12)
 		var blink := 0.55 + sin(tm * 5.0) * 0.45
 		_text(Vector2(v.x * 0.5, v.y * 0.53), "터치해서 시작" if main.touch.enabled else "아무 키나 눌러 시작", 46, Color(1, 1, 1, blink), HORIZONTAL_ALIGNMENT_CENTER)
-		_text(Vector2(v.x * 0.5, v.y * 0.62), "이동: A/D·방향키    점프: W·스페이스    물기: J    포효: K", 22, Color(1, 1, 1, 0.85), HORIZONTAL_ALIGNMENT_CENTER, 6)
+		_text(Vector2(v.x * 0.5, v.y * 0.62), "이동: A/D, 방향키    점프: W, 스페이스    물기: J    포효: K", 22, Color(1, 1, 1, 0.85), HORIZONTAL_ALIGNMENT_CENTER, 6)
 		_text(Vector2(v.x * 0.5, v.y * 0.67), "날아오는 포탄을 물어서 되받아쳐라!  점프해서 탱크를 밟아라!", 22, Color(1, 1, 1, 0.85), HORIZONTAL_ALIGNMENT_CENTER, 6)
 		if main.high_score > 0:
 			_text(Vector2(v.x * 0.5, v.y * 0.74), "최고 기록 %d" % main.high_score, 26, Color(1, 0.9, 0.4), HORIZONTAL_ALIGNMENT_CENTER)
@@ -108,7 +108,7 @@ func _draw() -> void:
 		_text(Vector2(v.x * 0.5, v.y * 0.44), "점수 %d" % main.score, 48, Color(1, 1, 1, a), HORIZONTAL_ALIGNMENT_CENTER)
 		var best_txt := "최고 기록 갱신!" if main.score >= main.high_score and main.score > 0 else "최고 기록 %d" % main.high_score
 		_text(Vector2(v.x * 0.5, v.y * 0.52), best_txt, 32, Color(1, 0.9, 0.4, a), HORIZONTAL_ALIGNMENT_CENTER)
-		_text(Vector2(v.x * 0.5, v.y * 0.59), "웨이브 %d  ·  적 %d대 격파" % [main.wave, main.kills], 26, Color(1, 1, 1, a * 0.85), HORIZONTAL_ALIGNMENT_CENTER)
+		_text(Vector2(v.x * 0.5, v.y * 0.59), "웨이브 %d  /  적 %d대 격파" % [main.wave, main.kills], 26, Color(1, 1, 1, a * 0.85), HORIZONTAL_ALIGNMENT_CENTER)
 		if main.gameover_t > 2.2:
 			var blink := 0.55 + sin(tm * 5.0) * 0.45
 			_text(Vector2(v.x * 0.5, v.y * 0.7), "터치해서 다시 시작" if main.touch.enabled else "아무 키나 눌러 다시 시작", 42, Color(1, 1, 1, blink), HORIZONTAL_ALIGNMENT_CENTER)
